@@ -24,6 +24,7 @@ test("removes diacritics", () => {
     ["Crème Brûlée", "creme-brulee"],
     ["São João", "sao-joao"],
     ["ÀÉÎÕÜÇÑ", "aeioucn"],
+    ["Ação 2026", "acao-2026"],
   ]);
 });
 
@@ -66,27 +67,22 @@ test("returns an empty string when no character survives", () => {
   ]);
 });
 
-test("spells Latin letters that do not decompose in ASCII", () => {
+test("treats letters that do not decompose as separators", () => {
   assertSlugs([
-    ["Straße", "strasse"],
-    ["GROẞ", "gross"],
-    ["Ærø", "aero"],
-    ["œuvre", "oeuvre"],
-    ["Łódź", "lodz"],
-    ["Đà Nẵng", "da-nang"],
-    ["Þór", "thor"],
-    ["Guðrún", "gudrun"],
-    ["Ħamrun", "hamrun"],
-    ["Diyarbakır", "diyarbakir"],
-    ["ĸ ŋ ŧ", "k-ng-t"],
+    ["Straße", "stra-e"],
+    ["paraŀlel", "para-lel"],
+    ["Łódź", "odz"],
   ]);
+  for (const letter of "ßẞæÆœŒøØłŁđĐðÐþÞħĦıĸŋŊŧŦŀĿ") {
+    assert.equal(slugify(`a${letter}b`), "a-b", `a${letter}b`);
+  }
 });
 
-test("turns every letter of Latin-1 Supplement and Latin Extended-A into ASCII letters", () => {
+test("turns each letter of Latin-1 Supplement and Latin Extended-A into one ASCII letter or nothing", () => {
   for (let code = 0xc0; code <= 0x17f; code++) {
     const letter = String.fromCodePoint(code);
     if (/\p{L}/u.test(letter)) {
-      assert.match(slugify(letter), /^[a-z]+$/, `U+${code.toString(16).toUpperCase()} ${letter}`);
+      assert.match(slugify(letter), /^[a-z]?$/, `U+${code.toString(16).toUpperCase()} ${letter}`);
     }
   }
 });
@@ -99,13 +95,17 @@ test("treats characters with no ASCII spelling as separators", () => {
   ]);
 });
 
-test("expands compatibility characters", () => {
+test("treats compatibility characters as separators", () => {
   assertSlugs([
-    ["ﬁle", "file"],
-    ["Ｈｅｌｌｏ", "hello"],
-    ["e²", "e2"],
-    ["™", "tm"],
-    ["𝐇𝐞𝐥𝐥𝐨", "hello"],
+    ["e²", "e"],
+    ["x²y", "x-y"],
+    ["™", ""],
+    ["½ cup", "cup"],
+    ["①②", ""],
+    ["ﬁle", "le"],
+    ["Ｈｅｌｌｏ", ""],
+    ["aＢc", "a-c"],
+    ["𝐇𝐞𝐥𝐥𝐨", ""],
   ]);
 });
 
