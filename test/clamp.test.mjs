@@ -80,9 +80,32 @@ test("throws TypeError when an argument is missing", () => {
   assert.throws(() => clamp(), TypeError);
 });
 
-test("checks argument types before NaN and the range", () => {
-  assert.throws(() => clamp("5", 10, 0), TypeError);
-  assert.throws(() => clamp("5", NaN, 10), TypeError);
+test("throws RangeError for NaN even when another argument is not a number", () => {
+  assert.throws(() => clamp(NaN, 0, undefined), RangeError);
+  assert.throws(() => clamp(NaN, "0", 10), RangeError);
+  assert.throws(() => clamp(NaN, 0, 10n), RangeError);
+  assert.throws(() => clamp(5, NaN, "10"), RangeError);
+  assert.throws(() => clamp("5", NaN, 10), RangeError);
+  assert.throws(() => clamp(null, NaN, 10), RangeError);
+  assert.throws(() => clamp("5", 0, NaN), RangeError);
+  assert.throws(() => clamp(5, true, NaN), RangeError);
+});
+
+test("throws RangeError when min is greater than max even if the value is not a number", () => {
+  assert.throws(() => clamp("5", 10, 0), RangeError);
+  assert.throws(() => clamp(undefined, 10, 0), RangeError);
+  assert.throws(() => clamp(5n, 10, 0), RangeError);
+  assert.throws(() => clamp(null, 1, -1), RangeError);
+});
+
+test("throws TypeError when a bound is not a number even if it compares greater", () => {
+  assert.throws(() => clamp(5, "10", 0), TypeError);
+  assert.throws(() => clamp(5, 10n, 0), TypeError);
+  assert.throws(() => clamp(5, 10, "0"), TypeError);
+});
+
+test("throws TypeError for a Number object holding NaN", () => {
+  assert.throws(() => clamp(new Number(NaN), 0, 10), TypeError);
 });
 
 test("clamps against infinite values and bounds", () => {
