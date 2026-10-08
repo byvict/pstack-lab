@@ -112,7 +112,7 @@ test("expands compatibility characters", () => {
 test("keeps a word whole when a combining mark sits inside it", () => {
   assertSlugs([
     ["İstanbul", "istanbul"],
-    ["Café", "cafe"],
-    ["e᪰x", "ex"],
+    ["Cafe\u0301", "cafe"],
+    ["e\u1AB0x", "ex"],
   ]);
 });
