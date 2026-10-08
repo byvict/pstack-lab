@@ -1,0 +1,9 @@
+{
+  "name": "pstack-lab",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "description": "Repositório descartável para programas Autopilot do pstack-vic.",
+  "engines": { "node": ">=24" },
+  "scripts": { "test": "node --test test/" }
+}
