@@ -11,6 +11,13 @@ const DURATION = new RegExp(
 );
 
 const MAX_SAFE = BigInt(Number.MAX_SAFE_INTEGER);
+const MAX_SAFE_DIGITS = String(Number.MAX_SAFE_INTEGER).length;
+const MAX_QUOTED_CHARACTERS = 1_000_000;
+
+function quote(text) {
+  const quoted = JSON.stringify(text.slice(0, MAX_QUOTED_CHARACTERS));
+  return text.length > MAX_QUOTED_CHARACTERS ? `${quoted}... (${text.length} characters)` : quoted;
+}
 
 export function parseDuration(text) {
   if (typeof text !== "string") {
@@ -18,18 +25,18 @@ export function parseDuration(text) {
   }
   const match = DURATION.exec(text);
   if (match === null) {
-    throw new SyntaxError(`parseDuration: invalid duration ${JSON.stringify(text)}`);
+    throw new SyntaxError(`parseDuration: invalid duration ${quote(text)}`);
   }
   let total = 0n;
   for (const [unit, factor] of UNITS) {
     const digits = match.groups[unit];
     if (digits !== undefined) {
-      total += BigInt(digits) * factor;
+      total += digits.length > MAX_SAFE_DIGITS ? MAX_SAFE + 1n : BigInt(digits) * factor;
     }
   }
   if (total > MAX_SAFE) {
     throw new RangeError(
-      `parseDuration: ${JSON.stringify(text)} exceeds Number.MAX_SAFE_INTEGER milliseconds`,
+      `parseDuration: ${quote(text)} exceeds Number.MAX_SAFE_INTEGER milliseconds`,
     );
   }
   return Number(total);
