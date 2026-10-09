@@ -375,8 +375,8 @@ test("accepts versions far longer than 255 characters", () => {
   assert.equal(compareSemver("1.0.0", longBuild), 0);
 });
 
-const RANGE_REJECTED = { name: "SyntaxError", message: /^satisfiesSemver: / };
-const TYPE_REJECTED = { name: "TypeError", message: /^satisfiesSemver: / };
+const RANGE_REJECTED = (error) => error instanceof SyntaxError && error.message.startsWith("satisfiesSemver: ");
+const TYPE_REJECTED = (error) => error instanceof TypeError && error.message.startsWith("satisfiesSemver: ");
 
 test("satisfiesSemver returns the item's example results", () => {
   const examples = [
@@ -1298,7 +1298,7 @@ test("satisfiesSemver quotes at most the first 1,000,000 characters of a huge in
       () => satisfiesSemver(version, range),
       (error) => {
         const quoted = `${JSON.stringify(named.slice(0, 1000000))}... (${length} characters)`;
-        assert.equal(error.name, "SyntaxError");
+        assert.ok(error instanceof SyntaxError, "SyntaxError");
         assert.ok(error.message.startsWith(`satisfiesSemver: ${quoted} `), "message quotes a bounded prefix");
         assert.ok(String(error.stack).startsWith("SyntaxError: satisfiesSemver: "), "stack renders");
         return true;
