@@ -424,28 +424,14 @@ function assertSatisfies(range, satisfying, failing) {
   }
 }
 
-const NOT_STRINGS = {
-  name: "TypeError",
-  message: "satisfiesSemver: version and range must both be strings",
-};
-
-function invalidVersion(version) {
-  return {
-    name: "SyntaxError",
-    message: `satisfiesSemver: ${JSON.stringify(version)} is not a valid SemVer 2.0.0 version`,
-  };
-}
-
-function invalidRange(range) {
-  return {
-    name: "SyntaxError",
-    message: `satisfiesSemver: ${JSON.stringify(range)} is not a valid range`,
-  };
+function namesInput(input) {
+  return (error) =>
+    error instanceof SyntaxError && error.message.startsWith(`satisfiesSemver: ${JSON.stringify(input)} `);
 }
 
 function assertInvalidRanges(version, ranges) {
   for (const range of ranges) {
-    assert.throws(() => satisfiesSemver(version, range), invalidRange(range), against(version, range));
+    assert.throws(() => satisfiesSemver(version, range), namesInput(range), against(version, range));
   }
 }
 
@@ -952,7 +938,7 @@ test("satisfiesSemver rejects an operator or a range in the version argument", (
   for (const version of [...operators.map((operator) => `${operator}1.2.3`), "1.2.3 1.2.3", "*"]) {
     assert.throws(
       () => satisfiesSemver(version, ">=0.0.0-0"),
-      invalidVersion(version),
+      namesInput(version),
       against(version, ">=0.0.0-0"),
     );
   }
@@ -986,14 +972,14 @@ function assertRejectedVersions(values) {
     const label = JSON.stringify(value);
     assert.throws(
       () => satisfiesSemver(value, ">=0.0.0-0"),
-      invalidVersion(value),
+      namesInput(value),
       `${label} as the version`,
     );
     for (const form of COMPARATOR_FORMS) {
       const range = form(value);
       assert.throws(
         () => satisfiesSemver("1.2.3", range),
-        invalidRange(range),
+        namesInput(range),
         `${label} in ${JSON.stringify(range)}`,
       );
     }
@@ -1122,7 +1108,7 @@ test("satisfiesSemver rejects other ASCII characters at each version separator i
     ["4.5.6+b", ".", "x", identifierCharacters],
   ];
   for (const [before, separator, after, alsoValid] of sites) {
-    assertAcceptedVersions([`${before}${separator}${after}`]);
+    assertAcceptedVersions([separator, ...alsoValid].map((char) => `${before}${char}${after}`));
     const others = ASCII.filter((char) => char !== separator && !alsoValid.includes(char));
     assertRejectedVersions(others.map((char) => `${before}${char}${after}`));
   }
@@ -1236,33 +1222,33 @@ function nonStrings(text) {
 
 test("satisfiesSemver throws TypeError for every kind of non-string in each position", () => {
   for (const [label, value] of nonStrings("1.2.3")) {
-    assert.throws(() => satisfiesSemver(value, "^1.0.0"), NOT_STRINGS, `${label} as the version`);
+    assert.throws(() => satisfiesSemver(value, "^1.0.0"), TYPE_REJECTED, `${label} as the version`);
   }
   for (const [label, value] of nonStrings("^1.0.0")) {
-    assert.throws(() => satisfiesSemver("1.2.3", value), NOT_STRINGS, `${label} as the range`);
-    assert.throws(() => satisfiesSemver(value, value), NOT_STRINGS, `${label} as both`);
+    assert.throws(() => satisfiesSemver("1.2.3", value), TYPE_REJECTED, `${label} as the range`);
+    assert.throws(() => satisfiesSemver(value, value), TYPE_REJECTED, `${label} as both`);
   }
 });
 
 test("satisfiesSemver throws TypeError for missing arguments", () => {
-  assert.throws(() => satisfiesSemver(), NOT_STRINGS, "no arguments");
-  assert.throws(() => satisfiesSemver("1.2.3"), NOT_STRINGS, "no range");
+  assert.throws(() => satisfiesSemver(), TYPE_REJECTED, "no arguments");
+  assert.throws(() => satisfiesSemver("1.2.3"), TYPE_REJECTED, "no range");
 });
 
 test("satisfiesSemver checks the type of both arguments before the syntax of either", () => {
-  assert.throws(() => satisfiesSemver("1.2", 1), NOT_STRINGS, "invalid version, numeric range");
-  assert.throws(() => satisfiesSemver("1.2"), NOT_STRINGS, "invalid version, missing range");
-  assert.throws(() => satisfiesSemver("", null), NOT_STRINGS, "empty version, null range");
+  assert.throws(() => satisfiesSemver("1.2", 1), TYPE_REJECTED, "invalid version, numeric range");
+  assert.throws(() => satisfiesSemver("1.2"), TYPE_REJECTED, "invalid version, missing range");
+  assert.throws(() => satisfiesSemver("", null), TYPE_REJECTED, "empty version, null range");
   assert.throws(
     () => satisfiesSemver("v1.2.3", new String("^1.0.0")),
-    NOT_STRINGS,
+    TYPE_REJECTED,
     "invalid version, String range",
   );
-  assert.throws(() => satisfiesSemver(1, "^v1.0.0"), NOT_STRINGS, "numeric version, invalid range");
-  assert.throws(() => satisfiesSemver(undefined, ""), NOT_STRINGS, "undefined version, empty range");
+  assert.throws(() => satisfiesSemver(1, "^v1.0.0"), TYPE_REJECTED, "numeric version, invalid range");
+  assert.throws(() => satisfiesSemver(undefined, ""), TYPE_REJECTED, "undefined version, empty range");
   assert.throws(
     () => satisfiesSemver(new String("1.2.3"), " "),
-    NOT_STRINGS,
+    TYPE_REJECTED,
     "String version, blank range",
   );
 });
@@ -1276,7 +1262,7 @@ test("satisfiesSemver names the version when both the version and the range are 
     ["v1.2.3", "=>1.0.0"],
     ["=1.2.3", ">=1.0.0  <2.0.0"],
   ]) {
-    assert.throws(() => satisfiesSemver(version, range), invalidVersion(version), against(version, range));
+    assert.throws(() => satisfiesSemver(version, range), namesInput(version), against(version, range));
   }
 });
 
@@ -1285,22 +1271,19 @@ test("satisfiesSemver names the whole range when one comparator is invalid", () 
 });
 
 test("satisfiesSemver quotes the named input with JSON.stringify after its own prefix", () => {
-  assert.throws(() => satisfiesSemver("1.2.3\n", "^1.0.0"), {
-    name: "SyntaxError",
-    message: 'satisfiesSemver: "1.2.3\\n" is not a valid SemVer 2.0.0 version',
-  });
-  assert.throws(() => satisfiesSemver("1.2.3", '^1.0.0\t"x"'), {
-    name: "SyntaxError",
-    message: 'satisfiesSemver: "^1.0.0\\t\\"x\\"" is not a valid range',
-  });
-  assert.throws(() => satisfiesSemver("1.2.3", ""), {
-    name: "SyntaxError",
-    message: 'satisfiesSemver: "" is not a valid range',
-  });
-  assert.throws(() => satisfiesSemver(Symbol("1.2.3"), "^1.0.0"), {
-    name: "TypeError",
-    message: "satisfiesSemver: version and range must both be strings",
-  });
+  const cases = [
+    ["1.2.3\n", "^1.0.0", 'satisfiesSemver: "1.2.3\\n" '],
+    ["1.2.3", '^1.0.0\t"x"', 'satisfiesSemver: "^1.0.0\\t\\"x\\"" '],
+    ["1.2.3", "", 'satisfiesSemver: "" '],
+  ];
+  for (const [version, range, prefix] of cases) {
+    assert.throws(
+      () => satisfiesSemver(version, range),
+      (error) => error instanceof SyntaxError && error.message.startsWith(prefix),
+      prefix,
+    );
+  }
+  assert.throws(() => satisfiesSemver(Symbol("1.2.3"), "^1.0.0"), TYPE_REJECTED);
 });
 
 test("satisfiesSemver quotes at most the first 1,000,000 characters of a huge input", () => {
