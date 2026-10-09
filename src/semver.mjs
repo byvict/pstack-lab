@@ -72,3 +72,5 @@ function compareValues(x, y) {
   }
   return 0;
 }
+
+export function satisfiesSemver(version, range) {}

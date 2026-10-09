@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { compareSemver } from "../src/semver.mjs";
+import { compareSemver, satisfiesSemver } from "../src/semver.mjs";
 
 function assertAscending(versions) {
   for (let i = 0; i < versions.length; i++) {
@@ -373,4 +373,40 @@ test("accepts versions far longer than 255 characters", () => {
   assertAscending(["1.0.0-x0", longPrerelease, "1.0.0", "2.0.0", longCore]);
   assert.equal(compareSemver(longBuild, "1.0.0"), 0);
   assert.equal(compareSemver("1.0.0", longBuild), 0);
+});
+
+const RANGE_REJECTED = { name: "SyntaxError", message: /^satisfiesSemver: / };
+const TYPE_REJECTED = { name: "TypeError", message: /^satisfiesSemver: / };
+
+test("satisfiesSemver returns the item's example results", () => {
+  const examples = [
+    ["1.2.3", "^1.2.0", true],
+    ["2.0.0", "^1.2.0", false],
+    ["0.2.5", "^0.2.3", true],
+    ["0.3.0", "^0.2.3", false],
+    ["0.0.3", "^0.0.3", true],
+    ["0.0.4", "^0.0.3", false],
+    ["1.2.9", "~1.2.3", true],
+    ["1.3.0", "~1.2.3", false],
+    ["1.5.0", ">=1.2.0 <2.0.0", true],
+    ["1.0.0+build.7", "=1.0.0", true],
+    ["1.2.3", "1.2.3", true],
+    ["2.0.0-alpha", "^1.2.3", true],
+    ["99999999999999999999.0.0", "^99999999999999999999.0.0", true],
+    ["100000000000000000000.0.0", "^99999999999999999999.0.0", false],
+  ];
+  for (const [version, range, expected] of examples) {
+    assert.equal(satisfiesSemver(version, range), expected, `${version} against ${JSON.stringify(range)}`);
+  }
+});
+
+test("satisfiesSemver throws the item's example SyntaxErrors", () => {
+  assert.throws(() => satisfiesSemver("1.2", "^1.0.0"), RANGE_REJECTED);
+  for (const range of ["", ">=1.0.0  <2.0.0", " ^1.0.0", "=>1.0.0", "^v1.0.0"]) {
+    assert.throws(() => satisfiesSemver("1.2.3", range), RANGE_REJECTED, JSON.stringify(range));
+  }
+});
+
+test("satisfiesSemver throws the item's example TypeError", () => {
+  assert.throws(() => satisfiesSemver(1, "^1.0.0"), TYPE_REJECTED);
 });
