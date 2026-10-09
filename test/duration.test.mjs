@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { constants } from "node:buffer";
 import { inspect } from "node:util";
 import { formatDuration, parseDuration } from "../src/duration.mjs";
 
@@ -136,6 +137,39 @@ test("returns Number.MAX_SAFE_INTEGER across segments and throws RangeError one 
 test("throws RangeError for a huge segment instead of rounding", () => {
   assert.throws(() => parseDuration("99999999999999999999d"), RangeError, '"99999999999999999999d"');
   assert.throws(() => parseDuration(`${"9".repeat(400)}ms`), RangeError, "400-digit ms segment");
+});
+
+test("throws its own RangeError for a segment too long for the engine's BigInt", () => {
+  assert.throws(() => parseDuration(`${"9".repeat(318767105)}d`), {
+    name: "RangeError",
+    message: `parseDuration: "${"9".repeat(1_000_000)}"... (318767106 characters) exceeds Number.MAX_SAFE_INTEGER milliseconds`,
+  });
+});
+
+test("throws its own RangeError for a segment as long as the engine's longest string", () => {
+  const length = constants.MAX_STRING_LENGTH;
+  assert.throws(() => parseDuration(`${"9".repeat(length - 1)}d`), {
+    name: "RangeError",
+    message: `parseDuration: "${"9".repeat(1_000_000)}"... (${length} characters) exceeds Number.MAX_SAFE_INTEGER milliseconds`,
+  });
+});
+
+test("throws its own SyntaxError for an invalid string too long to quote", () => {
+  assert.throws(() => parseDuration("\u0001".repeat(89478476)), {
+    name: "SyntaxError",
+    message: `parseDuration: invalid duration "${"\\u0001".repeat(1_000_000)}"... (89478476 characters)`,
+  });
+});
+
+test("quotes an invalid string whole up to a million characters and its first million after that", () => {
+  assert.throws(() => parseDuration("x".repeat(1_000_000)), {
+    name: "SyntaxError",
+    message: `parseDuration: invalid duration "${"x".repeat(1_000_000)}"`,
+  });
+  assert.throws(() => parseDuration("x".repeat(1_000_001)), {
+    name: "SyntaxError",
+    message: `parseDuration: invalid duration "${"x".repeat(1_000_000)}"... (1000001 characters)`,
+  });
 });
 
 function assertFormats(cases) {
