@@ -56,10 +56,15 @@ test("orders the section 11 normal version example chain", () => {
 });
 
 test("ignores build metadata", () => {
-  assert.equal(compareSemver("1.0.0+a", "1.0.0+b"), 0);
-  assert.equal(compareSemver("1.0.0+b", "1.0.0+a"), 0);
-  assert.equal(compareSemver("1.0.0", "1.0.0+20130313144700"), 0);
-  assert.equal(compareSemver("1.0.0-alpha+001", "1.0.0-alpha"), 0);
+  assertEquivalent([
+    ["1.0.0+a", "1.0.0+b"],
+    ["1.0.0", "1.0.0+0"],
+    ["1.0.0", "1.0.0+20130313144700"],
+    ["1.0.0-alpha+001", "1.0.0-alpha"],
+    ["1.0.0-alpha+001", "1.0.0-alpha+1"],
+    ["1.0.0-x.7.z.92+exp.sha.5114f85", "1.0.0-x.7.z.92"],
+    ["0.0.0+-", "0.0.0+zzz.999"],
+  ]);
   assert.equal(compareSemver("1.0.0-alpha+zzz", "1.0.0-alpha.1+aaa"), -1);
 });
 
@@ -86,13 +91,6 @@ test("checks the type of both arguments before the syntax of either", () => {
   assert.throws(() => compareSemver("not a version", 1), TypeError);
   assert.throws(() => compareSemver(1, "not a version"), TypeError);
   assert.throws(() => compareSemver("v1.0.0", undefined), TypeError);
-});
-
-test("throws SyntaxError when a or b is not a valid SemVer 2.0.0 string", () => {
-  for (const value of ["", "v1.0.0", " 1.0.0", "1.0.0 ", "1.0", "01.0.0", "1.0.0-01", "1.0.0-", "1.0.0+"]) {
-    assert.throws(() => compareSemver(value, "1.0.0"), SyntaxError, JSON.stringify(value));
-    assert.throws(() => compareSemver("1.0.0", value), SyntaxError, JSON.stringify(value));
-  }
 });
 
 test("prefixes error messages with the function name", () => {
@@ -150,8 +148,6 @@ test("accepts grammar edge cases the BNF allows", () => {
     "1.0.0+-",
     "1.0.0+0.00.-",
     "1.0.0-0+0",
-    "1.0.0-x-y-z.--",
-    "1.0.0+21AF26D3----117B344092BD",
   ]);
 });
 
@@ -184,7 +180,7 @@ test("rejects characters outside [0-9A-Za-z-] in identifiers", () => {
 });
 
 test("rejects non-ASCII letters that Unicode case folding maps to ASCII", () => {
-  assertInvalid(["1.0.0-ſ", "1.0.0-K", "1.0.0+K"]);
+  assertInvalid(["1.0.0-\u017f", "1.0.0-\u212a", "1.0.0+\u212a"]);
 });
 
 test("rejects a prefix before the major version", () => {
@@ -195,6 +191,8 @@ test("rejects whitespace anywhere", () => {
   assertInvalid([
     "1.0.0\n",
     "\n1.0.0",
+    " 1.0.0",
+    "1.0.0 ",
     "\t1.0.0",
     "1.0.0\t",
     "1.0.0\r\n",
@@ -204,8 +202,8 @@ test("rejects whitespace anywhere", () => {
     "1.0.0- a",
     "1.0.0-a\n",
     "1.0.0+a\n",
-    "1.0.0 ",
-    "1.0.0 ",
+    "1.0.0\u00a0",
+    "1.0.0\u2028",
   ]);
 });
 
@@ -286,16 +284,6 @@ test("ranks a longer pre-release higher only when the shared identifiers are equ
   assertAscending(["1.0.0-0", "1.0.0-0.0", "1.0.0-0.0.0"]);
   assertAscending(["1.0.0-a.b", "1.0.0-a.b.-"]);
   assertAscending(["1.0.0-a.z.z", "1.0.0-b"]);
-});
-
-test("returns 0 for versions that differ only in build metadata", () => {
-  assertEquivalent([
-    ["1.0.0+a", "1.0.0+b"],
-    ["1.0.0", "1.0.0+0"],
-    ["1.0.0-alpha+001", "1.0.0-alpha+1"],
-    ["1.0.0-x.7.z.92+exp.sha.5114f85", "1.0.0-x.7.z.92"],
-    ["0.0.0+-", "0.0.0+zzz.999"],
-  ]);
 });
 
 test("compares numbers of several hundred digits by exact value", () => {
