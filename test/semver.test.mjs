@@ -176,7 +176,26 @@ test("rejects a second plus sign", () => {
 });
 
 test("rejects characters outside [0-9A-Za-z-] in identifiers", () => {
-  assertInvalid(["1.0.0-a_b", "1.0.0-á", "1.0.0+a b", "1.0.0+á", "1.0.0-a/b", "1.0.0-a~b"]);
+  assertInvalid([
+    "1.0.0-a_b",
+    "1.0.0-á",
+    "1.0.0+a b",
+    "1.0.0+á",
+    "1.0.0-a/b",
+    "1.0.0-a~b",
+    "1.0.0+a_b",
+    "1.0.0+a^b",
+    "1.0.0+a[b]",
+  ]);
+});
+
+test("rejects every other ASCII character inside pre-release and build identifiers", () => {
+  for (let code = 0; code < 128; code++) {
+    const char = String.fromCharCode(code);
+    if (!/[0-9A-Za-z.+-]/.test(char)) {
+      assertInvalid([`1.0.0-a${char}b`, `1.0.0+a${char}b`]);
+    }
+  }
 });
 
 test("rejects non-ASCII letters that Unicode case folding maps to ASCII", () => {
@@ -207,8 +226,22 @@ test("rejects whitespace anywhere", () => {
   ]);
 });
 
-test("rejects non-ASCII digits", () => {
-  assertInvalid(["１.0.0", "1.٠.0", "1.0.0-٣", "1.0.0-a٣", "1.0.0+٣"]);
+test("rejects non-ASCII digits, also after an ASCII digit", () => {
+  assertInvalid([
+    "１.0.0",
+    "1.٠.0",
+    "1.0.0-٣",
+    "1.0.0-a٣",
+    "1.0.0+٣",
+    "1٣.0.0",
+    "1.1٣.0",
+    "1.0.1٣",
+    "1.0.0-1٣",
+    "1.0.0-alpha.1٣",
+    "1.0.0-٣a",
+    "1.0.0-1１",
+    "1.0.0+1٣",
+  ]);
 });
 
 test("rejects the empty string", () => {
@@ -269,6 +302,15 @@ test("ranks numeric pre-release identifiers below non-numeric ones", () => {
   assertAscending(["1.0.0-1", "1.0.0--"]);
   assertAscending(["1.0.0-99999999999999999999", "1.0.0-A"]);
   assertAscending(["1.0.0-alpha.999", "1.0.0-alpha.-"]);
+});
+
+test("counts a pre-release identifier as numeric only when it is all ASCII digits", () => {
+  assertAscending(["1.0.0-2", "1.0.0-0x1"]);
+  assertAscending(["1.0.0-2", "1.0.0-0o7"]);
+  assertAscending(["1.0.0-2", "1.0.0-1e3"]);
+  assertAscending(["1.0.0-2", "1.0.0-Infinity"]);
+  assertAscending(["1.0.0-0a", "1.0.0-0b1"]);
+  assertAscending(["1.0.0-0x10", "1.0.0-0x9"]);
 });
 
 test("compares non-numeric pre-release identifiers in ASCII order", () => {
