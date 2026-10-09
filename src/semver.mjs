@@ -192,8 +192,11 @@ function compareVersions(left, right) {
 }
 
 function comparePrereleases(left, right) {
-  if (left === "" || right === "") {
-    return compareValues(left === "", right === "");
+  if (left === "") {
+    return right === "" ? 0 : 1;
+  }
+  if (right === "") {
+    return -1;
   }
   let leftStart = 0;
   let rightStart = 0;
@@ -204,8 +207,11 @@ function comparePrereleases(left, right) {
     if (order !== 0) {
       return order;
     }
-    if (leftEnd === left.length || rightEnd === right.length) {
-      return compareValues(leftEnd < left.length, rightEnd < right.length);
+    if (leftEnd === left.length) {
+      return rightEnd === right.length ? 0 : -1;
+    }
+    if (rightEnd === right.length) {
+      return 1;
     }
     leftStart = leftEnd + 1;
     rightStart = rightEnd + 1;
