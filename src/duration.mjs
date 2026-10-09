@@ -7,7 +7,7 @@ const UNITS = [
 ];
 
 const DURATION = new RegExp(
-  `^${UNITS.map(([unit]) => `(?:(?<${unit}>0|[1-9][0-9]*)${unit})?`).join("")}$`,
+  `^(?!$)${UNITS.map(([unit]) => `(?:(?<${unit}>0|[1-9][0-9]*)${unit})?`).join("")}$`,
 );
 
 const MAX_SAFE = BigInt(Number.MAX_SAFE_INTEGER);
@@ -17,7 +17,7 @@ export function parseDuration(text) {
     throw new TypeError("parseDuration: text must be a string");
   }
   const match = DURATION.exec(text);
-  if (text === "" || match === null) {
+  if (match === null) {
     throw new SyntaxError(`parseDuration: invalid duration ${JSON.stringify(text)}`);
   }
   let total = 0n;
