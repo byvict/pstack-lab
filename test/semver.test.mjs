@@ -1421,6 +1421,9 @@ const BOUNDED_HEAP_CHILD = [
   '  "invalid last comparator": () => ["1.0.0", comparators() + "1.0"],',
   '  "identifiers in the version": () => ["1.0.0-" + identifiers(), ">1.0.0-a"],',
   '  "identifiers in the range": () => ["1.0.0-a.b", ">1.0.0-" + identifiers()],',
+  '  "build identifiers in the version": () => ["1.0.0+" + identifiers(), "=1.0.0"],',
+  '  "build identifiers in the range": () => ["1.0.0", "=1.0.0+" + identifiers()],',
+  '  "separators after an invalid comparator": () => ["1.0.0", "aa" + " a".repeat(8000000)],',
   "};",
   "const [version, range] = inputs[process.argv[2]]();",
   "try {",
@@ -1437,6 +1440,9 @@ test("satisfiesSemver stays within a 32 MB heap for millions of comparators and 
     ["invalid last comparator", 'SyntaxError satisfiesSemver: "1.0.0 1.0.0'],
     ["identifiers in the version", "true"],
     ["identifiers in the range", "true"],
+    ["build identifiers in the version", "true"],
+    ["build identifiers in the range", "true"],
+    ["separators after an invalid comparator", 'SyntaxError satisfiesSemver: "aa a a a a'],
   ];
   for (const [name, expected] of cases) {
     const output = execFileSync(
