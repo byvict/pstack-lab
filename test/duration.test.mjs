@@ -279,6 +279,7 @@ test("round-trips numbers through formatDuration and parseDuration", () => {
     Number.MAX_SAFE_INTEGER - 1,
     Number.MAX_SAFE_INTEGER,
   ]);
+  assert.equal(parseDuration(formatDuration(-0)), 0, "-0 reads back as 0");
 });
 
 test("round-trips a fixed pseudo-random sweep of numbers across every magnitude", () => {
