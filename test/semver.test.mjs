@@ -1308,7 +1308,7 @@ test("satisfiesSemver quotes at most the first 1,000,000 characters of a huge in
   }
 });
 
-test("satisfiesSemver handles five million dot-separated identifiers in either position", () => {
+test("satisfiesSemver handles five million dot-separated identifiers in every position", () => {
   const identifiers = `${"a.".repeat(5000000)}a`;
   assertSatisfies(">1.0.0-a", [`1.0.0-${identifiers}`], []);
   assertSatisfies("<1.0.0-a.b", [`1.0.0-${identifiers}`], []);
@@ -1317,6 +1317,8 @@ test("satisfiesSemver handles five million dot-separated identifiers in either p
   assertSatisfies(`=1.0.0+${identifiers}`, ["1.0.0"], ["1.0.1"]);
   const cases = [
     [`1.0.0-${identifiers}_`, ">=0.0.0", '"1.0.0-a.a.', 10000008],
+    [`1.0.0+${identifiers}_`, ">=0.0.0", '"1.0.0+a.a.', 10000008],
+    ["1.0.0", `>=1.0.0-${identifiers}_`, '">=1.0.0-a.a.', 10000010],
     ["1.0.0", `>=1.0.0+${identifiers}_`, '">=1.0.0+a.a.', 10000010],
   ];
   for (const [version, range, start, length] of cases) {
@@ -1336,4 +1338,32 @@ test("satisfiesSemver rejects a range of 140,000,000 spaces with its own SyntaxE
     () => satisfiesSemver("1.0.0", `>=1.0.0${" ".repeat(140000000)}`),
     (error) => error instanceof SyntaxError && error.message.startsWith('satisfiesSemver: ">=1.0.0 '),
   );
+});
+
+function assertQuoted(version, range, quoted, label) {
+  assert.throws(
+    () => satisfiesSemver(version, range),
+    (error) => error instanceof SyntaxError && error.message.startsWith(`satisfiesSemver: ${quoted} `),
+    label,
+  );
+}
+
+test("satisfiesSemver quotes a bad input of up to 1,000,000 characters whole and cuts a longer one", () => {
+  const cases = [
+    [999999, `"${"x".repeat(999999)}"`],
+    [1000000, `"${"x".repeat(1000000)}"`],
+    [1000001, `"${"x".repeat(1000000)}"... (1000001 characters)`],
+  ];
+  for (const [length, quoted] of cases) {
+    const text = "x".repeat(length);
+    assertQuoted(text, "^1.0.0", quoted, `version of ${length} characters`);
+    assertQuoted("1.0.0", text, quoted, `range of ${length} characters`);
+  }
+});
+
+test("satisfiesSemver quotes a bad input of the largest string length", () => {
+  const text = "x".repeat(constants.MAX_STRING_LENGTH);
+  const quoted = `"${"x".repeat(1000000)}"... (${constants.MAX_STRING_LENGTH} characters)`;
+  assertQuoted(text, "^1.0.0", quoted, "version of the largest length");
+  assertQuoted("1.0.0", text, quoted, "range of the largest length");
 });
