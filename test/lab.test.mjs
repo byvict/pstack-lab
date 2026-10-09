@@ -129,11 +129,8 @@ const USAGE_ERRORS = [
   ["help", "x"],
   ["--help", "x"],
   ["help", "--help"],
-  ["--", "duration", "parse", "1h"],
   ["duration"],
   ["semver"],
-  ["duration", "--help"],
-  ["duration", "help"],
   ["duration", "foo", "1s"],
   ["DURATION", "parse", "1h30m"],
   ["duration", "", "1s"],
@@ -208,13 +205,14 @@ const FUNCTION_ERRORS = [
   ],
 ];
 
-// One row per command: the operands that make it succeed, and for each operand slot the
-// near-miss spellings a transforming reader would accept. Every case below is generated from it.
+// One row per command: the operands that make it succeed, and for each operand slot near misses
+// that any trimming, case-folding or Unicode-normalizing reader changes (U+212A is changed by NFC,
+// NFD, NFKC, NFKD and toLowerCase). Every case below is generated from these rows.
 const OPERANDS = [
   {
     words: ["duration", "parse"],
     valid: ["1h"],
-    nearMisses: [[" 1h", "\t1h", "\u00A01h", "1h ", "1H", "\uFF11h"]],
+    nearMisses: [[" 1h", "\t1h", "\u00A01h", "1h ", "1H", "\uFF11h", "1h\u212A"]],
     rejects: (token) => ({
       status: 1,
       stdout: "",
@@ -231,8 +229,8 @@ const OPERANDS = [
     words: ["semver", "compare"],
     valid: ["1.0.0", "2.0.0"],
     nearMisses: [
-      [" 1.0.0", "\t1.0.0", "\u00A01.0.0", "1.0.0 ", "\uFF11.0.0"],
-      [" 2.0.0", "\t2.0.0", "\u00A02.0.0", "2.0.0 ", "\uFF12.0.0"],
+      [" 1.0.0", "\t1.0.0", "\u00A01.0.0", "1.0.0 ", "\uFF11.0.0", "1.0.0-\u212A"],
+      [" 2.0.0", "\t2.0.0", "\u00A02.0.0", "2.0.0 ", "\uFF12.0.0", "2.0.0-\u212A"],
     ],
     rejects: (token) => ({
       status: 1,
@@ -250,11 +248,17 @@ const OPERAND_IN_SLOT = OPERANDS.flatMap(({ words, valid, nearMisses, rejects })
   ),
 );
 
-const OPTION_BESIDE_OPERANDS = OPERANDS.flatMap(({ words, valid }) =>
-  OPTION_TOKENS.flatMap((token) =>
-    Array.from({ length: valid.length + 1 }, (_, at) => [...words, ...valid.toSpliced(at, 0, token)]),
+const OPTION_MISPLACED = [
+  ...OPERANDS.flatMap(({ words, valid }) => {
+    const argv = [...words, ...valid];
+    return OPTION_TOKENS.flatMap((token) =>
+      Array.from({ length: argv.length + 1 }, (_, at) => argv.toSpliced(at, 0, token)),
+    );
+  }),
+  ...[...new Set(OPERANDS.map(({ words }) => words[0]))].flatMap((group) =>
+    OPTION_TOKENS.map((token) => [group, token]),
   ),
-);
+];
 
 test('package.json\'s "lab" bin runs ["duration", "parse", "1h30m"] through its shebang from another directory', () => {
   const { bin } = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
@@ -296,8 +300,8 @@ for (const [args, expected] of OPERAND_IN_SLOT) {
   });
 }
 
-for (const args of OPTION_BESIDE_OPERANDS) {
-  test(`${show(args)} counts the option-shaped token as an operand`, () => {
+for (const args of OPTION_MISPLACED) {
+  test(`${show(args)} is a usage error with the option-shaped token in place`, () => {
     assert.deepEqual(lab(args), { status: 2, stdout: "", stderr: USAGE });
   });
 }
