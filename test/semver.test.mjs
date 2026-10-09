@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { constants } from "node:buffer";
 import { compareSemver, satisfiesSemver } from "../src/semver.mjs";
 
 function assertAscending(versions) {
@@ -375,7 +376,7 @@ test("accepts versions far longer than 255 characters", () => {
   assert.equal(compareSemver("1.0.0", longBuild), 0);
 });
 
-const RANGE_REJECTED = (error) => error instanceof SyntaxError && error.message.startsWith("satisfiesSemver: ");
+const SYNTAX_REJECTED = (error) => error instanceof SyntaxError && error.message.startsWith("satisfiesSemver: ");
 const TYPE_REJECTED = (error) => error instanceof TypeError && error.message.startsWith("satisfiesSemver: ");
 
 test("satisfiesSemver returns the item's example results", () => {
@@ -401,9 +402,9 @@ test("satisfiesSemver returns the item's example results", () => {
 });
 
 test("satisfiesSemver throws the item's example SyntaxErrors", () => {
-  assert.throws(() => satisfiesSemver("1.2", "^1.0.0"), RANGE_REJECTED);
+  assert.throws(() => satisfiesSemver("1.2", "^1.0.0"), SYNTAX_REJECTED);
   for (const range of ["", ">=1.0.0  <2.0.0", " ^1.0.0", "=>1.0.0", "^v1.0.0"]) {
-    assert.throws(() => satisfiesSemver("1.2.3", range), RANGE_REJECTED, JSON.stringify(range));
+    assert.throws(() => satisfiesSemver("1.2.3", range), SYNTAX_REJECTED, JSON.stringify(range));
   }
 });
 
@@ -685,12 +686,10 @@ test("satisfiesSemver computes limits of million-digit numbers", () => {
 });
 
 test("satisfiesSemver computes a limit for a number longer than the largest BigInt", () => {
-  const range = `^${"9".repeat(330_000_000)}.0.0`;
-  assert.equal(
-    satisfiesSemver("1.0.0", range),
-    false,
-    "1.0.0 against ^N.0.0, where N is 330 million nines",
-  );
+  const nines = "9".repeat(330_000_000);
+  const range = `^${nines}.0.0`;
+  assert.equal(satisfiesSemver(`${nines}.1.0`, range), true, "N.1.0 against ^N.0.0, N is 330 million nines");
+  assert.equal(satisfiesSemver(`1${"0".repeat(330_000_000)}.0.0`, range), false, "(N+1).0.0 against ^N.0.0");
 });
 
 test("satisfiesSemver requires every comparator of the range to hold", () => {
@@ -1287,11 +1286,12 @@ test("satisfiesSemver quotes the named input with JSON.stringify after its own p
 });
 
 test("satisfiesSemver quotes at most the first 1,000,000 characters of a huge input", () => {
-  const huge = String.fromCharCode(1).repeat(89478475);
+  const sixCharacterEscapesPastStringLimit = Math.ceil(constants.MAX_STRING_LENGTH / 6);
+  const huge = String.fromCharCode(1).repeat(sixCharacterEscapesPastStringLimit);
   const cases = [
-    [huge, "^1.0.0", huge, 89478475],
-    ["1.0.0", `^${huge}`, `^${huge}`, 89478476],
-    [huge, huge, huge, 89478475],
+    [huge, "^1.0.0", huge, huge.length],
+    ["1.0.0", `^${huge}`, `^${huge}`, huge.length + 1],
+    [huge, huge, huge, huge.length],
   ];
   for (const [version, range, named, length] of cases) {
     assert.throws(
