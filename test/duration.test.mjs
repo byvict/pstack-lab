@@ -287,7 +287,6 @@ test("round-trips a fixed pseudo-random sweep of numbers across every magnitude"
   let state = 1n;
   for (let index = 0; index < 4096; index += 1) {
     state = BigInt.asUintN(64, state * 6364136223846793005n + 1442695040888963407n);
-    // Top 53 bits fit Number.MAX_SAFE_INTEGER; shifting index % 53 more covers every magnitude.
     values.push(Number(state >> BigInt(11 + (index % 53))));
   }
   assertNumbersRoundTrip(values);
@@ -299,7 +298,6 @@ test("round-trips canonical strings through parseDuration and formatDuration", (
 
 test("round-trips every in-order subset of units at count 1 and at the largest values", () => {
   const tails = inOrderCombinations(["59m", "59s", "999ms"]);
-  // 104249991d fits Number.MAX_SAFE_INTEGER beside 59m59s999ms but not beside 23h.
   const heads = ["", "23h", "104249991d", "99999d23h"];
   const texts = [
     ...inOrderCombinations(["1d", "1h", "1m", "1s", "1ms"]),
