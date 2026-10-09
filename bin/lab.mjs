@@ -48,7 +48,15 @@ function run(args) {
   }
 }
 
+function ignoreClosedReader(error) {
+  if (error.code !== "EPIPE") {
+    throw error;
+  }
+}
+
 const { code, text } = run(process.argv.slice(2));
-(code === 0 ? process.stdout : process.stderr).write(text);
+const stream = code === 0 ? process.stdout : process.stderr;
+stream.on("error", ignoreClosedReader);
+stream.write(text);
 // exitCode, not process.exit(): a natural exit drains pending pipe writes.
 process.exitCode = code;
