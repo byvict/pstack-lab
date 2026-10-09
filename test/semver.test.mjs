@@ -1414,15 +1414,24 @@ test("satisfiesSemver quotes a bad input of the largest string length", () => {
 
 const BOUNDED_HEAP_CHILD = [
   "const { satisfiesSemver } = await import(process.argv[1]);",
-  'const comparators = () => "1.0.0 ".repeat(2000000);',
-  'const identifiers = () => "a.".repeat(10000000) + "a";',
+  "function distinct(prefix, count, separator, item, suffix) {",
+  "  const buffer = Buffer.allocUnsafe(prefix.length + count * 16 + suffix.length);",
+  '  let size = buffer.write(prefix, 0, "latin1");',
+  "  for (let i = 0; i < count; i++) {",
+  '    size += buffer.write((i === 0 ? "" : separator) + item(i), size, "latin1");',
+  "  }",
+  '  size += buffer.write(suffix, size, "latin1");',
+  '  return buffer.toString("latin1", 0, size);',
+  "}",
+  'const comparators = (suffix) => distinct("", 1000000, " ", (i) => ">=0.0." + i, suffix);',
+  'const identifiers = (prefix) => distinct(prefix, 2000000, ".", (i) => "a" + i, "");',
   "const inputs = {",
-  '  "valid range": () => ["1.0.0", comparators() + "1.0.0"],',
-  '  "invalid last comparator": () => ["1.0.0", comparators() + "1.0"],',
-  '  "identifiers in the version": () => ["1.0.0-" + identifiers(), ">1.0.0-a"],',
-  '  "identifiers in the range": () => ["1.0.0-a.b", ">1.0.0-" + identifiers()],',
-  '  "build identifiers in the version": () => ["1.0.0+" + identifiers(), "=1.0.0"],',
-  '  "build identifiers in the range": () => ["1.0.0", "=1.0.0+" + identifiers()],',
+  '  "valid range": () => ["1.0.0", comparators("")],',
+  '  "invalid last comparator": () => ["1.0.0", comparators(" 1.0")],',
+  '  "identifiers in the version": () => [identifiers("1.0.0-"), ">1.0.0-a0"],',
+  '  "identifiers in the range": () => ["1.0.0-a0.zz", identifiers(">1.0.0-")],',
+  '  "build identifiers in the version": () => [identifiers("1.0.0+"), "=1.0.0"],',
+  '  "build identifiers in the range": () => ["1.0.0", identifiers("=1.0.0+")],',
   '  "separators after an invalid comparator": () => ["1.0.0", "aa" + " a".repeat(8000000)],',
   "};",
   "const [version, range] = inputs[process.argv[2]]();",
@@ -1433,11 +1442,11 @@ const BOUNDED_HEAP_CHILD = [
   "}",
 ].join("\n");
 
-test("satisfiesSemver stays within a 32 MB heap for millions of comparators and identifiers", () => {
+test("satisfiesSemver stays within a 32 MB heap for millions of distinct comparators and identifiers", () => {
   const moduleUrl = new URL("../src/semver.mjs", import.meta.url).href;
   const cases = [
     ["valid range", "true"],
-    ["invalid last comparator", 'SyntaxError satisfiesSemver: "1.0.0 1.0.0'],
+    ["invalid last comparator", 'SyntaxError satisfiesSemver: ">=0.0.0 >=0'],
     ["identifiers in the version", "true"],
     ["identifiers in the range", "true"],
     ["build identifiers in the version", "true"],
