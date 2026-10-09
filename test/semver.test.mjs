@@ -1307,3 +1307,33 @@ test("satisfiesSemver quotes at most the first 1,000,000 characters of a huge in
     );
   }
 });
+
+test("satisfiesSemver handles five million dot-separated identifiers in either position", () => {
+  const identifiers = `${"a.".repeat(5000000)}a`;
+  assertSatisfies(">1.0.0-a", [`1.0.0-${identifiers}`], []);
+  assertSatisfies("<1.0.0-a.b", [`1.0.0-${identifiers}`], []);
+  assertSatisfies("=1.0.0", [`1.0.0+${identifiers}`], []);
+  assertSatisfies(`>1.0.0-${identifiers}`, ["1.0.0-a.b"], ["1.0.0-a.a"]);
+  assertSatisfies(`=1.0.0+${identifiers}`, ["1.0.0"], ["1.0.1"]);
+  const cases = [
+    [`1.0.0-${identifiers}_`, ">=0.0.0", '"1.0.0-a.a.', 10000008],
+    ["1.0.0", `>=1.0.0+${identifiers}_`, '">=1.0.0+a.a.', 10000010],
+  ];
+  for (const [version, range, start, length] of cases) {
+    assert.throws(
+      () => satisfiesSemver(version, range),
+      (error) =>
+        error instanceof SyntaxError &&
+        error.message.startsWith(`satisfiesSemver: ${start}`) &&
+        error.message.includes(`... (${length} characters)`),
+      `${length} characters`,
+    );
+  }
+});
+
+test("satisfiesSemver rejects a range of 140,000,000 spaces with its own SyntaxError", () => {
+  assert.throws(
+    () => satisfiesSemver("1.0.0", `>=1.0.0${" ".repeat(140000000)}`),
+    (error) => error instanceof SyntaxError && error.message.startsWith('satisfiesSemver: ">=1.0.0 '),
+  );
+});
