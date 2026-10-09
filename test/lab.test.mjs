@@ -256,15 +256,17 @@ test("a 90000-character error line reaches stderr whole", () => {
   });
 });
 
-test("a usage error exits 2 even when the stdout reader is gone", async () => {
+test("a usage error exits 2 when either reader is gone", async () => {
   assert.deepEqual(await labWithClosedReader(["foo"], "stdout"), { status: 2, stderr: USAGE });
+  assert.deepEqual(await labWithClosedReader(["foo"], "stderr"), { status: 2, stdout: "" });
 });
 
-test("a success exits 0 even when the stderr reader is gone", async () => {
+test("a success exits 0 when either reader is gone", async () => {
   assert.deepEqual(await labWithClosedReader(["duration", "parse", "1h"], "stderr"), {
     status: 0,
     stdout: "3600000\n",
   });
+  assert.deepEqual(await labWithClosedReader(["duration", "parse", "1h"], "stdout"), { status: 0, stderr: "" });
 });
 
 test("a TypeError from the function becomes one stderr line with exit 1", () => {
