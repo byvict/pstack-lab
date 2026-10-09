@@ -693,6 +693,56 @@ test("satisfiesSemver computes a limit for a number longer than the largest BigI
   assert.equal(satisfiesSemver(`1${"0".repeat(330_000_000)}.0.0`, range), false, "(N+1).0.0 against ^N.0.0");
 });
 
+const CENSUS_IDENTIFIERS = [
+  "0", "1", "2", "9", "10", "11",
+  "9007199254740992", "9007199254740993",
+  "99999999999999999999", "100000000000000000000", "123456789012345678901234",
+  "a", "b", "z", "A", "B", "Z", "-", "--", "a-b", "-a", "0a", "1a", "9z", "alpha", "Alpha", "ALPHA", "rc",
+];
+
+const PRECEDENCE_RELATIONS = {
+  "=": (order) => order === 0,
+  ">": (order) => order > 0,
+  ">=": (order) => order >= 0,
+  "<": (order) => order < 0,
+  "<=": (order) => order <= 0,
+};
+
+function censusVersions() {
+  const prereleases = ["", ...CENSUS_IDENTIFIERS];
+  for (const first of CENSUS_IDENTIFIERS) {
+    for (const second of ["0", "9007199254740993", "a", "A", "-"]) {
+      prereleases.push(`${first}.${second}`);
+    }
+  }
+  return prereleases.flatMap((prerelease, i) => {
+    const version = prerelease === "" ? "1.2.3" : `1.2.3-${prerelease}`;
+    return i % 4 === 0 ? [version, `${version}+build.${i}`] : [version];
+  });
+}
+
+test("satisfiesSemver orders every pair of a pre-release census exactly as compareSemver does", () => {
+  const versions = censusVersions();
+  const mismatches = [];
+  for (const left of versions) {
+    for (const right of versions) {
+      const order = compareSemver(left, right);
+      for (const [operator, holds] of Object.entries(PRECEDENCE_RELATIONS)) {
+        if (satisfiesSemver(left, `${operator}${right}`) !== holds(order)) {
+          mismatches.push(`${left} against ${operator}${right}`);
+        }
+      }
+    }
+  }
+  assert.equal(versions.length, 212);
+  assert.deepEqual(mismatches.slice(0, 10), []);
+});
+
+test("satisfiesSemver compares a numeric pre-release identifier longer than the largest BigInt", () => {
+  const nines = "9".repeat(330_000_000);
+  assert.equal(satisfiesSemver(`1.0.0-${nines}`, `>1.0.0-${nines.slice(1)}`), true);
+});
+
 test("satisfiesSemver requires every comparator of the range to hold", () => {
   const holding = [">=1.0.0", "<2.0.0", "^1.2.0", "~1.5.0", "=1.5.0", "1.5.0", ">1.4.9", "<=1.5.0"];
   const failing = ["<1.5.0", ">1.5.0", "^2.0.0", "~1.4.0", "=1.5.1", "1.4.0", ">=1.5.1", "<=1.4.99"];
