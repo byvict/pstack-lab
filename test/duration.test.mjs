@@ -224,22 +224,30 @@ test("puts no cap on d", () => {
   ]);
 });
 
-test("throws TypeError when ms is not a number", () => {
+test("throws TypeError for every type but number, including objects that convert to a number", () => {
   assertFormatThrowsFor(TypeError, [
-    1000n,
-    0n,
+    undefined,
+    true,
+    false,
     "1000",
     "0",
     "1s",
     "NaN",
     "-1",
-    undefined,
+    1000n,
+    0n,
+    Symbol("1"),
+    () => 1000,
     null,
-    true,
     {},
     [1000],
     new Number(1000),
-    Symbol("1"),
+    new String("1000"),
+    new Boolean(true),
+    Object(1000n),
+    new Date(1000),
+    { valueOf: () => 1000 },
+    { [Symbol.toPrimitive]: () => 1000 },
   ]);
 });
 
