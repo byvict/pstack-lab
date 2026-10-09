@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 
@@ -14,9 +15,9 @@ const USAGE =
   "       lab --help\n" +
   "       lab help\n";
 
-function lab(args, { shebang = false, nodeArgs = [] } = {}) {
-  const { status, stdout, stderr, error } = shebang
-    ? spawnSync(LAB, args, { encoding: "utf8", cwd: tmpdir() })
+function lab(args, { executable, nodeArgs = [] } = {}) {
+  const { status, stdout, stderr, error } = executable
+    ? spawnSync(executable, args, { encoding: "utf8", cwd: tmpdir() })
     : spawnSync(process.execPath, [...nodeArgs, LAB, ...args], { encoding: "utf8" });
   assert.ifError(error);
   return { status, stdout, stderr };
@@ -31,10 +32,11 @@ function withParseDuration(definition) {
     `export const parseDuration = ${definition};`;
   const preload =
     'import { registerHooks } from "node:module";' +
-    "registerHooks({ resolve: (specifier, context, next) =>" +
-    ' specifier === "../src/duration.mjs"' +
+    "registerHooks({ resolve: (specifier, context, next) => {" +
+    " const resolved = next(specifier, context);" +
+    ` return resolved.url === ${JSON.stringify(DURATION)} && !context.parentURL?.startsWith("data:")` +
     ` ? { url: ${JSON.stringify(`data:text/javascript,${encodeURIComponent(stub)}`)}, shortCircuit: true }` +
-    " : next(specifier, context) });" +
+    " : resolved; } });" +
     'process.on("uncaughtException", (error) => {' +
     ' console.error(`uncaught: ${error.name}: ${error.message}`); process.exitCode = 3; });';
   return ["--import", `data:text/javascript,${encodeURIComponent(preload)}`];
@@ -110,6 +112,9 @@ const MALFORMED_MS = [
   "1\n",
   "1\r\n",
   "1 ",
+  " 5",
+  "\t5",
+  "\u00a05",
   "1\u2028",
   "\u0661",
   "\uFF11",
@@ -143,6 +148,9 @@ const USAGE_ERRORS = [
   ["duration", "format"],
   ["duration", "format", "1", "extra"],
   ["duration", "format", "9007199254740992", "extra"],
+  ["duration", "format", "--", "5"],
+  ["duration", "format", "--x", "5"],
+  ["duration", "format", "5", "--x"],
   ["semver", "compare"],
   ["semver", "compare", "1.0.0"],
   ["semver", "compare", "1.0.0", "2.0.0", "3.0.0"],
@@ -216,8 +224,10 @@ const FUNCTION_ERRORS = [
   ],
 ];
 
-test('the shebang runs ["duration", "parse", "1h30m"] from another directory', () => {
-  assert.deepEqual(lab(["duration", "parse", "1h30m"], { shebang: true }), {
+test('package.json\'s "lab" bin runs ["duration", "parse", "1h30m"] through its shebang from another directory', () => {
+  const { bin } = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
+  const executable = fileURLToPath(new URL(`../${bin.lab}`, import.meta.url));
+  assert.deepEqual(lab(["duration", "parse", "1h30m"], { executable }), {
     status: 0,
     stdout: "5400000\n",
     stderr: "",
