@@ -1,9 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
+import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 
 const LAB = fileURLToPath(new URL("../bin/lab.mjs", import.meta.url));
+const DURATION = new URL("../src/duration.mjs", import.meta.url).href;
 
 const USAGE =
   "usage: lab duration parse <texto>\n" +
@@ -12,12 +14,45 @@ const USAGE =
   "       lab --help\n" +
   "       lab help\n";
 
-function lab(args, { shebang = false } = {}) {
+function lab(args, { shebang = false, nodeArgs = [] } = {}) {
   const { status, stdout, stderr, error } = shebang
-    ? spawnSync(LAB, args, { encoding: "utf8" })
-    : spawnSync(process.execPath, [LAB, ...args], { encoding: "utf8" });
+    ? spawnSync(LAB, args, { encoding: "utf8", cwd: tmpdir() })
+    : spawnSync(process.execPath, [...nodeArgs, LAB, ...args], { encoding: "utf8" });
   assert.ifError(error);
   return { status, stdout, stderr };
+}
+
+// No argv string reaches these error paths, so a child-only preload swaps parseDuration
+// and reports any uncaught error on one line with exit 3. bin/lab.mjs itself is unchanged.
+function withParseDuration(definition) {
+  const stub =
+    `import { parseDuration as real } from ${JSON.stringify(DURATION)};` +
+    `export { formatDuration } from ${JSON.stringify(DURATION)};` +
+    `export const parseDuration = ${definition};`;
+  const preload =
+    'import { registerHooks } from "node:module";' +
+    "registerHooks({ resolve: (specifier, context, next) =>" +
+    ' specifier === "../src/duration.mjs"' +
+    ` ? { url: ${JSON.stringify(`data:text/javascript,${encodeURIComponent(stub)}`)}, shortCircuit: true }` +
+    " : next(specifier, context) });" +
+    'process.on("uncaughtException", (error) => {' +
+    ' console.error(`uncaught: ${error.name}: ${error.message}`); process.exitCode = 3; });';
+  return ["--import", `data:text/javascript,${encodeURIComponent(preload)}`];
+}
+
+function labWithClosedReader(args, closed) {
+  const open = closed === "stdout" ? "stderr" : "stdout";
+  return new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, [LAB, ...args]);
+    child[closed].destroy();
+    let text = "";
+    child[open].setEncoding("utf8");
+    child[open].on("data", (chunk) => {
+      text += chunk;
+    });
+    child.on("error", reject);
+    child.on("close", (status) => resolve({ status, [open]: text }));
+  });
 }
 
 function show(args) {
@@ -181,7 +216,7 @@ const FUNCTION_ERRORS = [
   ],
 ];
 
-test('the shebang runs ["duration", "parse", "1h30m"]', () => {
+test('the shebang runs ["duration", "parse", "1h30m"] from another directory', () => {
   assert.deepEqual(lab(["duration", "parse", "1h30m"], { shebang: true }), {
     status: 0,
     stdout: "5400000\n",
@@ -219,4 +254,30 @@ test("a 90000-character error line reaches stderr whole", () => {
     stdout: "",
     stderr: 'lab: SyntaxError: parseDuration: invalid duration "' + "x".repeat(90_000) + '"\n',
   });
+});
+
+test("a usage error exits 2 even when the stdout reader is gone", async () => {
+  assert.deepEqual(await labWithClosedReader(["foo"], "stdout"), { status: 2, stderr: USAGE });
+});
+
+test("a success exits 0 even when the stderr reader is gone", async () => {
+  assert.deepEqual(await labWithClosedReader(["duration", "parse", "1h"], "stderr"), {
+    status: 0,
+    stdout: "3600000\n",
+  });
+});
+
+test("a TypeError from the function becomes one stderr line with exit 1", () => {
+  assert.deepEqual(lab(["duration", "parse", "1h"], { nodeArgs: withParseDuration("() => real(undefined)") }), {
+    status: 1,
+    stdout: "",
+    stderr: "lab: TypeError: parseDuration: text must be a string\n",
+  });
+});
+
+test("an error outside TypeError, SyntaxError and RangeError stays uncaught", () => {
+  assert.deepEqual(
+    lab(["duration", "parse", "1h"], { nodeArgs: withParseDuration('() => { throw new Error("boom"); }') }),
+    { status: 3, stdout: "", stderr: "uncaught: Error: boom\n" },
+  );
 });
