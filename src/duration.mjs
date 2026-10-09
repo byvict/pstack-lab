@@ -34,3 +34,24 @@ export function parseDuration(text) {
   }
   return Number(total);
 }
+
+export function formatDuration(ms) {
+  if (typeof ms !== "number") {
+    throw new TypeError("formatDuration: ms must be a number");
+  }
+  if (!Number.isSafeInteger(ms) || ms < 0) {
+    throw new RangeError(
+      `formatDuration: ${ms} is not an integer from 0 to Number.MAX_SAFE_INTEGER`,
+    );
+  }
+  let rest = BigInt(ms);
+  let text = "";
+  for (const [unit, factor] of UNITS) {
+    const count = rest / factor;
+    rest %= factor;
+    if (count > 0n) {
+      text += `${count}${unit}`;
+    }
+  }
+  return text === "" ? "0ms" : text;
+}
