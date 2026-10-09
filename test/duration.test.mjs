@@ -243,6 +243,32 @@ test("throws TypeError when ms is not a number", () => {
   ]);
 });
 
+test("throws TypeError, never RangeError, for a non-number below, inside or above the range", () => {
+  assertFormatThrowsFor(TypeError, [
+    -1n,
+    -(2n ** 53n),
+    1000n,
+    BigInt(Number.MAX_SAFE_INTEGER),
+    2n ** 53n,
+    "-1",
+    "-9007199254740992",
+    "-0",
+    "1000",
+    "1.5",
+    "9007199254740991",
+    "9007199254740992",
+    "1e400",
+    "Infinity",
+    "-Infinity",
+    "NaN",
+    new Number(-1),
+    new Number(1.5),
+    new Number(2 ** 53),
+    [-1],
+    [2 ** 53],
+  ]);
+});
+
 test("throws RangeError unless ms is an integer from 0 to Number.MAX_SAFE_INTEGER", () => {
   assertFormatThrowsFor(RangeError, [
     NaN,
