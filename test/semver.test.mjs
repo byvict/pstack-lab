@@ -686,11 +686,29 @@ test("satisfiesSemver computes limits of million-digit numbers", () => {
   }
 });
 
-test("satisfiesSemver computes a limit for a number longer than the largest BigInt", () => {
-  const nines = "9".repeat(330_000_000);
-  const range = `^${nines}.0.0`;
-  assert.equal(satisfiesSemver(`${nines}.1.0`, range), true, "N.1.0 against ^N.0.0, N is 330 million nines");
-  assert.equal(satisfiesSemver(`1${"0".repeat(330_000_000)}.0.0`, range), false, "(N+1).0.0 against ^N.0.0");
+test("satisfiesSemver increments and compares numbers longer than the largest BigInt at every site", () => {
+  const n = () => "9".repeat(330_000_000);
+  const next = () => `1${"0".repeat(330_000_000)}`;
+  const sameLengthBelow = () => `${"9".repeat(329_999_999)}8`;
+  const cases = [
+    ["^ major, below the limit", () => [`${n()}.1.0`, `^${n()}.0.0`], true],
+    ["^ major, at the limit", () => [`${next()}.0.0`, `^${n()}.0.0`], false],
+    ["^ minor, below the limit", () => [`0.${n()}.1`, `^0.${n()}.0`], true],
+    ["^ minor, at the limit", () => [`0.${next()}.0`, `^0.${n()}.0`], false],
+    ["^ patch, below the limit", () => [`0.0.${next()}-0`, `^0.0.${n()}`], true],
+    ["^ patch, at the limit", () => [`0.0.${next()}`, `^0.0.${n()}`], false],
+    ["~ minor, below the limit", () => [`1.${n()}.7`, `~1.${n()}.0`], true],
+    ["~ minor, at the limit", () => [`1.${next()}.0`, `~1.${n()}.0`], false],
+    ["major, equal length", () => [`${n()}.0.0`, `>${sameLengthBelow()}.0.0`], true],
+    ["minor, equal length", () => [`0.${n()}.0`, `>0.${sameLengthBelow()}.0`], true],
+    ["patch, equal length", () => [`0.0.${n()}`, `>0.0.${sameLengthBelow()}`], true],
+    ["major, longer", () => [`${next()}.0.0`, `>${n()}.0.0`], true],
+    ["pre-release, equal length", () => [`1.0.0-${n()}`, `>1.0.0-${sameLengthBelow()}`], true],
+    ["pre-release, longer", () => [`1.0.0-${next()}`, `>1.0.0-${n()}`], true],
+  ];
+  for (const [site, inputs, expected] of cases) {
+    assert.equal(satisfiesSemver(...inputs()), expected, site);
+  }
 });
 
 const CENSUS_IDENTIFIERS = [
@@ -738,10 +756,6 @@ test("satisfiesSemver orders every pair of a pre-release census exactly as compa
   assert.deepEqual(mismatches.slice(0, 10), []);
 });
 
-test("satisfiesSemver compares a numeric pre-release identifier longer than the largest BigInt", () => {
-  const nines = "9".repeat(330_000_000);
-  assert.equal(satisfiesSemver(`1.0.0-${nines}`, `>1.0.0-${nines.slice(1)}`), true);
-});
 
 test("satisfiesSemver requires every comparator of the range to hold", () => {
   const holding = [">=1.0.0", "<2.0.0", "^1.2.0", "~1.5.0", "=1.5.0", "1.5.0", ">1.4.9", "<=1.5.0"];
