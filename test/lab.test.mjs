@@ -82,6 +82,8 @@ const SUCCESSES = [
   [["semver", "compare", "1.9.0", "1.10.0"], "-1\n"],
   [["semver", "compare", "1.0.0-rc.1", "1.0.0"], "-1\n"],
   [["semver", "compare", "1.0.0+build.1", "1.0.0+build.2"], "0\n"],
+  [["semver", "compare", "1.0.0-B", "1.0.0-a"], "-1\n"],
+  [["semver", "compare", "1.0.0-a", "1.0.0-B"], "1\n"],
 ];
 
 const HELP_REQUESTS = [["--help"], ["help"]];
@@ -106,15 +108,10 @@ const MALFORMED_MS = [
   "NaN",
   "Infinity",
   "1s",
-  "--",
-  "--help",
   "\t7\n",
   "1\n",
   "1\r\n",
   "1 ",
-  " 5",
-  "\t5",
-  "\u00a05",
   "1\u2028",
   "\u0661",
   "\uFF11",
@@ -148,9 +145,6 @@ const USAGE_ERRORS = [
   ["duration", "format"],
   ["duration", "format", "1", "extra"],
   ["duration", "format", "9007199254740992", "extra"],
-  ["duration", "format", "--", "5"],
-  ["duration", "format", "--x", "5"],
-  ["duration", "format", "5", "--x"],
   ["semver", "compare"],
   ["semver", "compare", "1.0.0"],
   ["semver", "compare", "1.0.0", "2.0.0", "3.0.0"],
@@ -159,9 +153,7 @@ const USAGE_ERRORS = [
 
 const FUNCTION_ERRORS = [
   [["duration", "parse", "-1s"], 'lab: SyntaxError: parseDuration: invalid duration "-1s"\n'],
-  [["duration", "parse", "--"], 'lab: SyntaxError: parseDuration: invalid duration "--"\n'],
-  [["duration", "parse", "--help"], 'lab: SyntaxError: parseDuration: invalid duration "--help"\n'],
-  [["duration", "parse", ""], 'lab: SyntaxError: parseDuration: invalid duration ""\n'],
+  [["duration", "parse", ""],'lab: SyntaxError: parseDuration: invalid duration ""\n'],
   [["duration", "parse", "1h\n"], 'lab: SyntaxError: parseDuration: invalid duration "1h\\n"\n'],
   [["duration", "parse", "1h 30m"], 'lab: SyntaxError: parseDuration: invalid duration "1h 30m"\n'],
   [["duration", "parse", "01m"], 'lab: SyntaxError: parseDuration: invalid duration "01m"\n'],
@@ -211,18 +203,58 @@ const FUNCTION_ERRORS = [
     'lab: SyntaxError: compareSemver: "-1.0.0" is not a valid SemVer 2.0.0 version\n',
   ],
   [
-    ["semver", "compare", "--help", "1.0.0"],
-    'lab: SyntaxError: compareSemver: "--help" is not a valid SemVer 2.0.0 version\n',
-  ],
-  [
-    ["semver", "compare", "1.0.0", "--"],
-    'lab: SyntaxError: compareSemver: "--" is not a valid SemVer 2.0.0 version\n',
-  ],
-  [
     ["semver", "compare", "1.0.0\n", "1.0.0"],
     'lab: SyntaxError: compareSemver: "1.0.0\\n" is not a valid SemVer 2.0.0 version\n',
   ],
 ];
+
+// One row per command: the operands that make it succeed, and for each operand slot the
+// near-miss spellings a transforming reader would accept. Every case below is generated from it.
+const OPERANDS = [
+  {
+    words: ["duration", "parse"],
+    valid: ["1h"],
+    nearMisses: [[" 1h", "\t1h", "\u00A01h", "1h ", "1H", "\uFF11h"]],
+    rejects: (token) => ({
+      status: 1,
+      stdout: "",
+      stderr: `lab: SyntaxError: parseDuration: invalid duration ${JSON.stringify(token)}\n`,
+    }),
+  },
+  {
+    words: ["duration", "format"],
+    valid: ["5"],
+    nearMisses: [[" 5", "\t5", "\u00A05", "5 ", "\uFF15"]],
+    rejects: () => ({ status: 2, stdout: "", stderr: USAGE }),
+  },
+  {
+    words: ["semver", "compare"],
+    valid: ["1.0.0", "2.0.0"],
+    nearMisses: [
+      [" 1.0.0", "\t1.0.0", "\u00A01.0.0", "1.0.0 ", "\uFF11.0.0"],
+      [" 2.0.0", "\t2.0.0", "\u00A02.0.0", "2.0.0 ", "\uFF12.0.0"],
+    ],
+    rejects: (token) => ({
+      status: 1,
+      stdout: "",
+      stderr: `lab: SyntaxError: compareSemver: ${JSON.stringify(token)} is not a valid SemVer 2.0.0 version\n`,
+    }),
+  },
+];
+
+const OPTION_TOKENS = ["--", "--x", "-h", "--help", "help"];
+
+const OPERAND_IN_SLOT = OPERANDS.flatMap(({ words, valid, nearMisses, rejects }) =>
+  valid.flatMap((_, slot) =>
+    [...OPTION_TOKENS, ...nearMisses[slot]].map((token) => [[...words, ...valid.with(slot, token)], rejects(token)]),
+  ),
+);
+
+const OPTION_BESIDE_OPERANDS = OPERANDS.flatMap(({ words, valid }) =>
+  OPTION_TOKENS.flatMap((token) =>
+    Array.from({ length: valid.length + 1 }, (_, at) => [...words, ...valid.toSpliced(at, 0, token)]),
+  ),
+);
 
 test('package.json\'s "lab" bin runs ["duration", "parse", "1h30m"] through its shebang from another directory', () => {
   const { bin } = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
@@ -255,6 +287,18 @@ for (const args of USAGE_ERRORS) {
 for (const [args, stderr] of FUNCTION_ERRORS) {
   test(`${show(args)} reports the function's error`, () => {
     assert.deepEqual(lab(args), { status: 1, stdout: "", stderr });
+  });
+}
+
+for (const [args, expected] of OPERAND_IN_SLOT) {
+  test(`${show(args)} hands the operand on unchanged`, () => {
+    assert.deepEqual(lab(args), expected);
+  });
+}
+
+for (const args of OPTION_BESIDE_OPERANDS) {
+  test(`${show(args)} counts the option-shaped token as an operand`, () => {
+    assert.deepEqual(lab(args), { status: 2, stdout: "", stderr: USAGE });
   });
 }
 
