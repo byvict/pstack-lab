@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "description": "Repositório descartável para programas Autopilot do pstack-vic.",
+  "bin": { "lab": "bin/lab.mjs" },
   "engines": { "node": ">=24" },
   "scripts": { "test": "node --test" }
 }
