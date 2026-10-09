@@ -25,7 +25,7 @@ function parse(version) {
 
 function comparePrecedence(left, right) {
   for (let i = 0; i < 3; i++) {
-    const order = compareValues(BigInt(left.core[i]), BigInt(right.core[i]));
+    const order = compareUnpaddedIntegers(left.core[i], right.core[i]);
     if (order !== 0) {
       return order;
     }
@@ -51,12 +51,16 @@ function compareIdentifiers(x, y) {
   const xIsNumeric = NUMERIC.test(x);
   const yIsNumeric = NUMERIC.test(y);
   if (xIsNumeric && yIsNumeric) {
-    return compareValues(BigInt(x), BigInt(y));
+    return compareUnpaddedIntegers(x, y);
   }
   if (xIsNumeric !== yIsNumeric) {
     return xIsNumeric ? -1 : 1;
   }
   return compareValues(x, y);
+}
+
+function compareUnpaddedIntegers(x, y) {
+  return compareValues(x.length, y.length) || compareValues(x, y);
 }
 
 function compareValues(x, y) {

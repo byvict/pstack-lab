@@ -23,11 +23,13 @@ function assertValid(versions) {
   }
 }
 
+const REJECTED = { name: "SyntaxError", message: /^compareSemver: / };
+
 function assertInvalid(values) {
   for (const value of values) {
     const label = JSON.stringify(value);
-    assert.throws(() => compareSemver(value, "1.0.0"), SyntaxError, `${label} as a`);
-    assert.throws(() => compareSemver("1.0.0", value), SyntaxError, `${label} as b`);
+    assert.throws(() => compareSemver(value, "2.0.0"), REJECTED, `${label} as a`);
+    assert.throws(() => compareSemver("2.0.0", value), REJECTED, `${label} as b`);
   }
 }
 
@@ -189,12 +191,22 @@ test("rejects characters outside [0-9A-Za-z-] in identifiers", () => {
   ]);
 });
 
-test("rejects every other ASCII character inside pre-release and build identifiers", () => {
-  for (let code = 0; code < 128; code++) {
-    const char = String.fromCharCode(code);
-    if (!/[0-9A-Za-z.+-]/.test(char)) {
-      assertInvalid([`1.0.0-a${char}b`, `1.0.0+a${char}b`]);
-    }
+test("rejects every other ASCII character at each separator position", () => {
+  const identifierCharacters = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz-";
+  const ascii = Array.from({ length: 128 }, (_, code) => String.fromCharCode(code));
+  const sites = [
+    ["1", ".", "2.3", ""],
+    ["1.2", ".", "3", ""],
+    ["1.2.3", "-", "a+b", ""],
+    ["1.2.3", "+", "0.01", ""],
+    ["1.2.3-a", "+", "0.01", ""],
+    ["1.2.3-a", ".", "b", `${identifierCharacters}+`],
+    ["1.2.3+a", ".", "b", identifierCharacters],
+  ];
+  for (const [before, separator, after, alsoValid] of sites) {
+    assertValid([`${before}${separator}${after}`]);
+    const others = ascii.filter((char) => char !== separator && !alsoValid.includes(char));
+    assertInvalid(others.map((char) => `${before}${char}${after}`));
   }
 });
 
@@ -226,22 +238,33 @@ test("rejects whitespace anywhere", () => {
   ]);
 });
 
-test("rejects non-ASCII digits, also after an ASCII digit", () => {
-  assertInvalid([
-    "１.0.0",
-    "1.٠.0",
-    "1.0.0-٣",
-    "1.0.0-a٣",
-    "1.0.0+٣",
-    "1٣.0.0",
-    "1.1٣.0",
-    "1.0.1٣",
-    "1.0.0-1٣",
-    "1.0.0-alpha.1٣",
-    "1.0.0-٣a",
-    "1.0.0-1１",
-    "1.0.0+1٣",
-  ]);
+test("rejects non-ASCII number characters at every digit position", () => {
+  const numbers = [];
+  for (let code = 0x80; code <= 0x10ffff; code++) {
+    const char = String.fromCodePoint(code);
+    if (/\p{N}/u.test(char)) {
+      numbers.push(char);
+    }
+  }
+  assert.ok(numbers.length > 1000, `${numbers.length} non-ASCII number characters`);
+  const sites = [
+    (n) => `${n}.0.0`,
+    (n) => `1${n}.0.0`,
+    (n) => `1.${n}.0`,
+    (n) => `1.1${n}.0`,
+    (n) => `1.0.${n}`,
+    (n) => `1.0.1${n}`,
+    (n) => `1.0.0-${n}`,
+    (n) => `1.0.0-1${n}`,
+    (n) => `1.0.0-alpha.1${n}`,
+    (n) => `1.0.0-${n}a`,
+    (n) => `1.0.0-a${n}`,
+    (n) => `1.0.0+${n}`,
+    (n) => `1.0.0+1${n}`,
+  ];
+  for (const number of numbers) {
+    assertInvalid(sites.map((site) => site(number)));
+  }
 });
 
 test("rejects the empty string", () => {
