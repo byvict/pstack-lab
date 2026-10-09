@@ -1302,3 +1302,25 @@ test("satisfiesSemver quotes the named input with JSON.stringify after its own p
     message: "satisfiesSemver: version and range must both be strings",
   });
 });
+
+test("satisfiesSemver quotes at most the first 1,000,000 characters of a huge input", () => {
+  const huge = String.fromCharCode(1).repeat(89478475);
+  const cases = [
+    [huge, "^1.0.0", huge, 89478475],
+    ["1.0.0", `^${huge}`, `^${huge}`, 89478476],
+    [huge, huge, huge, 89478475],
+  ];
+  for (const [version, range, named, length] of cases) {
+    assert.throws(
+      () => satisfiesSemver(version, range),
+      (error) => {
+        const quoted = `${JSON.stringify(named.slice(0, 1000000))}... (${length} characters)`;
+        assert.equal(error.name, "SyntaxError");
+        assert.ok(error.message.startsWith(`satisfiesSemver: ${quoted} `), "message quotes a bounded prefix");
+        assert.ok(String(error.stack).startsWith("SyntaxError: satisfiesSemver: "), "stack renders");
+        return true;
+      },
+      `${length} characters`,
+    );
+  }
+});
