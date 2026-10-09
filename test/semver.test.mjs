@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { constants } from "node:buffer";
+import { execFileSync } from "node:child_process";
 import { compareSemver, satisfiesSemver } from "../src/semver.mjs";
 
 function assertAscending(versions) {
@@ -1333,13 +1334,6 @@ test("satisfiesSemver handles five million dot-separated identifiers in every po
   }
 });
 
-test("satisfiesSemver rejects a range of 140,000,000 spaces with its own SyntaxError", () => {
-  assert.throws(
-    () => satisfiesSemver("1.0.0", `>=1.0.0${" ".repeat(140000000)}`),
-    (error) => error instanceof SyntaxError && error.message.startsWith('satisfiesSemver: ">=1.0.0 '),
-  );
-});
-
 function assertQuoted(version, range, quoted, label) {
   assert.throws(
     () => satisfiesSemver(version, range),
@@ -1366,4 +1360,40 @@ test("satisfiesSemver quotes a bad input of the largest string length", () => {
   const quoted = `"${"x".repeat(1000000)}"... (${constants.MAX_STRING_LENGTH} characters)`;
   assertQuoted(text, "^1.0.0", quoted, "version of the largest length");
   assertQuoted("1.0.0", text, quoted, "range of the largest length");
+});
+
+const BOUNDED_HEAP_CHILD = [
+  "const { satisfiesSemver } = await import(process.argv[1]);",
+  'const comparators = () => "1.0.0 ".repeat(2000000);',
+  'const identifiers = () => "a.".repeat(10000000) + "a";',
+  "const inputs = {",
+  '  "valid range": () => ["1.0.0", comparators() + "1.0.0"],',
+  '  "invalid last comparator": () => ["1.0.0", comparators() + "1.0"],',
+  '  "identifiers in the version": () => ["1.0.0-" + identifiers(), ">1.0.0-a"],',
+  '  "identifiers in the range": () => ["1.0.0-a.b", ">1.0.0-" + identifiers()],',
+  "};",
+  "const [version, range] = inputs[process.argv[2]]();",
+  "try {",
+  "  console.log(String(satisfiesSemver(version, range)));",
+  "} catch (error) {",
+  '  console.log(error.constructor.name + " " + error.message.slice(0, 29));',
+  "}",
+].join("\n");
+
+test("satisfiesSemver stays within a 32 MB heap for millions of comparators and identifiers", () => {
+  const moduleUrl = new URL("../src/semver.mjs", import.meta.url).href;
+  const cases = [
+    ["valid range", "true"],
+    ["invalid last comparator", 'SyntaxError satisfiesSemver: "1.0.0 1.0.0'],
+    ["identifiers in the version", "true"],
+    ["identifiers in the range", "true"],
+  ];
+  for (const [name, expected] of cases) {
+    const output = execFileSync(
+      process.execPath,
+      ["--max-old-space-size=32", "--input-type=module", "-e", BOUNDED_HEAP_CHILD, moduleUrl, name],
+      { encoding: "utf8" },
+    );
+    assert.equal(output.trim(), expected, name);
+  }
 });
