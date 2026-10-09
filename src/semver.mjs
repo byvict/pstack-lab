@@ -83,14 +83,19 @@ const HOLDS = {
   "<=": (order) => order <= 0,
 };
 
+const MAX_QUOTED_CHARACTERS = 1_000_000;
+
+function quote(text) {
+  const quoted = JSON.stringify(text.slice(0, MAX_QUOTED_CHARACTERS));
+  return text.length > MAX_QUOTED_CHARACTERS ? `${quoted}... (${text.length} characters)` : quoted;
+}
+
 export function satisfiesSemver(version, range) {
   if (typeof version !== "string" || typeof range !== "string") {
     throw new TypeError("satisfiesSemver: version and range must both be strings");
   }
   if (!SEMVER.test(version)) {
-    throw new SyntaxError(
-      `satisfiesSemver: ${JSON.stringify(version)} is not a valid SemVer 2.0.0 version`,
-    );
+    throw new SyntaxError(`satisfiesSemver: ${quote(version)} is not a valid SemVer 2.0.0 version`);
   }
   const subject = parse(version);
   return parseRange(range).every(([operator, bound]) =>
@@ -103,7 +108,7 @@ function parseRange(range) {
     const [operator] = OPERATOR.exec(comparator);
     const operand = comparator.slice(operator.length);
     if (!SEMVER.test(operand)) {
-      throw new SyntaxError(`satisfiesSemver: ${JSON.stringify(range)} is not a valid range`);
+      throw new SyntaxError(`satisfiesSemver: ${quote(range)} is not a valid range`);
     }
     const bound = parse(operand);
     if (operator === "^" || operator === "~") {
