@@ -546,6 +546,8 @@ const LONG_ERROR_LINES = OPERANDS.flatMap(({ words, slots }) => {
 const USAGE_ERROR = { status: 2, stdout: "", stderr: USAGE };
 
 const READER_GONE = [
+  [["help"], { status: 0, stdout: USAGE, stderr: "" }],
+  [["--help"], { status: 0, stdout: USAGE, stderr: "" }],
   [["duration", "parse", "90m"], { status: 0, stdout: "5400000\n", stderr: "" }],
   [["duration", "parse"], USAGE_ERROR],
   [["duration", "parse", "-1s"], syntaxError('parseDuration: invalid duration "-1s"')],
