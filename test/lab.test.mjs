@@ -382,20 +382,45 @@ const BLANK_INSERTED = BLANK_TOKENS.flatMap((token) =>
 
 const ASCII_PUNCTUATION = [..."!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~"];
 
+const prefixesAndExtensions = (word) => [
+  ...Array.from({ length: word.length }, (_, end) => word.slice(0, end)),
+  ...["x", ...ASCII_PUNCTUATION].map((character) => word + character),
+];
+
 const WORD_PREFIXES_AND_EXTENSIONS = OPERANDS.flatMap(({ words, slots }) => {
   const argv = [...words, ...validOperands(slots)];
-  return words.flatMap((word, at) =>
-    [
-      ...Array.from({ length: word.length - 1 }, (_, end) => word.slice(0, end + 1)),
-      ...["x", ...ASCII_PUNCTUATION].map((character) => word + character),
-    ].map((token) => argv.with(at, token)),
-  );
+  return words.flatMap((word, at) => prefixesAndExtensions(word).map((token) => argv.with(at, token)));
 });
 
-const HELP_WITH_WORD = [...new Set(OPERANDS.flatMap(({ words }) => words))].flatMap((word) => [
-  ["help", word],
-  ["--help", word],
-]);
+const orders = (items) =>
+  items.length <= 1
+    ? [items]
+    : items.flatMap((item, at) => orders(items.toSpliced(at, 1)).map((rest) => [item, ...rest]));
+
+const COMMAND_WORDS_MOVED = OPERANDS.flatMap(({ words, slots }) => {
+  const operands = validOperands(slots);
+  return [
+    ...words.map((_, at) => [...words.toSpliced(at, 1), ...operands]),
+    ...orders(words)
+      .filter((order) => order.some((word, at) => word !== words[at]))
+      .map((order) => [...order, ...operands]),
+  ];
+});
+
+const HELP_WORDS = ["help", "--help"];
+
+const HELP_SHAPES = [
+  ...new Map(
+    [
+      ...HELP_WORDS.flatMap((help) => prefixesAndExtensions(help).map((token) => [token])),
+      ...HELP_WORDS.flatMap((help) => [
+        ...[...new Set(OPERANDS.flatMap(({ words }) => words))].map((word) => [help, word]),
+        ...OPERANDS.map(({ words }) => [help, ...words]),
+        ...OPERANDS.map(({ words, slots }) => [help, ...words, ...validOperands(slots)]),
+      ]),
+    ].map((args) => [JSON.stringify(args), args]),
+  ).values(),
+];
 
 const PERTURBING_CHARACTERS = [
   ...Array.from({ length: 0x1f }, (_, code) => String.fromCharCode(code + 1)),
@@ -456,6 +481,13 @@ const neighbours = (operand) => [
   ...[...operand].map((_, at) => operand.slice(0, at) + operand.slice(at + 1)),
 ];
 
+const ESCAPES_IN_PLACE = { " ": ["%20", "\\t"], ">": ["%3E"], ".": ["%2E"] };
+
+const escapedInPlace = (operand) =>
+  [...operand].flatMap((character, at) =>
+    (ESCAPES_IN_PLACE[character] ?? []).map((escape) => operand.slice(0, at) + escape + operand.slice(at + 1)),
+  );
+
 const perturbed = (operand) =>
   [
     ...new Set([
@@ -464,6 +496,7 @@ const perturbed = (operand) =>
       ...surrounded(operand, NON_ASCII_CHARACTERS),
       ...neighbours(operand),
       ...surrounded(operand, ESCAPE_FORMS),
+      ...escapedInPlace(operand),
     ]),
   ].filter((variant) => variant !== operand);
 
@@ -592,7 +625,13 @@ for (const args of WORD_PREFIXES_AND_EXTENSIONS) {
   });
 }
 
-for (const args of HELP_WITH_WORD) {
+for (const args of COMMAND_WORDS_MOVED) {
+  test(`${show(args)} is a usage error with the command words moved or missing`, () => {
+    assert.deepEqual(lab(args), USAGE_ERROR);
+  });
+}
+
+for (const args of HELP_SHAPES) {
   test(`${show(args)} is a usage error, not a help request`, () => {
     assert.deepEqual(lab(args), USAGE_ERROR);
   });
