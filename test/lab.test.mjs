@@ -269,12 +269,12 @@ const OPERANDS = [
     slots: [
       {
         valid: "1.0.0",
-        nearMisses: [" 1.0.0", "\t1.0.0", "\u00A01.0.0", "1.0.0 ", "\uFF11.0.0", "1.0.0-\u212A"],
+        nearMisses: [" 1.0.0", "\t1.0.0", "\u00A01.0.0", "1.0.0 ", "\uFF11.0.0", "1.0.0-\u212A", "v1.0.0", "=1.0.0"],
         rejects: (token) => syntaxError(`compareSemver: ${JSON.stringify(token)} is not a valid SemVer 2.0.0 version`),
       },
       {
         valid: "2.0.0",
-        nearMisses: [" 2.0.0", "\t2.0.0", "\u00A02.0.0", "2.0.0 ", "\uFF12.0.0", "2.0.0-\u212A"],
+        nearMisses: [" 2.0.0", "\t2.0.0", "\u00A02.0.0", "2.0.0 ", "\uFF12.0.0", "2.0.0-\u212A", "v2.0.0", "=2.0.0"],
         rejects: (token) => syntaxError(`compareSemver: ${JSON.stringify(token)} is not a valid SemVer 2.0.0 version`),
       },
     ],
@@ -295,6 +295,8 @@ const OPERANDS = [
           "1.5.0-\u212A",
           "1.5.0-\u017F",
           "1.5.0+",
+          "v1.5.0",
+          "=1.5.0",
         ],
         rejects: (token) =>
           syntaxError(`satisfiesSemver: ${JSON.stringify(token)} is not a valid SemVer 2.0.0 version`),
@@ -314,6 +316,7 @@ const OPERANDS = [
           ">=1.2.3-\u212A <2.0.0",
           ">=1.2.3-\u017F <2.0.0",
           ">=1.2.3+ <2.0.0",
+          ">=1.2.3, <2.0.0",
         ],
         rejects: (token) => syntaxError(`satisfiesSemver: ${JSON.stringify(token)} is not a valid range`),
       },
@@ -321,10 +324,12 @@ const OPERANDS = [
   },
 ];
 
-const OPTION_TOKENS = ["--", "--x", "-h", "--help", "help"];
+const OPTION_TOKENS = ["--", "--x", "-", "-h", "--help", "help"];
+
+const validOperands = (slots) => slots.map(({ valid }) => valid);
 
 const OPERAND_IN_SLOT = OPERANDS.flatMap(({ words, slots }) => {
-  const valid = slots.map(({ valid }) => valid);
+  const valid = validOperands(slots);
   return slots.flatMap(({ nearMisses, rejects }, slot) =>
     [...OPTION_TOKENS, ...nearMisses].map((token) => [[...words, ...valid.with(slot, token)], rejects(token)]),
   );
@@ -332,7 +337,7 @@ const OPERAND_IN_SLOT = OPERANDS.flatMap(({ words, slots }) => {
 
 const OPTION_MISPLACED = [
   ...OPERANDS.flatMap(({ words, slots }) => {
-    const argv = [...words, ...slots.map(({ valid }) => valid)];
+    const argv = [...words, ...validOperands(slots)];
     return OPTION_TOKENS.flatMap((token) =>
       Array.from({ length: argv.length + 1 }, (_, at) => argv.toSpliced(at, 0, token)),
     );
@@ -342,12 +347,13 @@ const OPTION_MISPLACED = [
   ),
   ...OPERANDS.flatMap(({ words, slots }) =>
     slots.slice(1).flatMap((_, given) =>
-      OPTION_TOKENS.map((token) => [...words, ...slots.slice(0, given).map(({ valid }) => valid), token]),
+      OPTION_TOKENS.map((token) => [...words, ...validOperands(slots.slice(0, given)), token]),
     ),
   ),
 ];
 
-const SATISFIES_ARGS = ["semver", "satisfies", "1.5.0", ">=1.2.3 <2.0.0"];
+const SATISFIES = OPERANDS.find(({ words }) => words[1] === "satisfies");
+const SATISFIES_ARGS = [...SATISFIES.words, ...validOperands(SATISFIES.slots)];
 const WORD_NEAR_MISSES = [
   ["SEMVER", "\u017Femver", " semver", "semver "],
   ["SATISFIES", "satisfie\u017F", " satisfies", "satisfies "],
