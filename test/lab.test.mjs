@@ -380,12 +380,15 @@ const BLANK_INSERTED = BLANK_TOKENS.flatMap((token) =>
   Array.from({ length: SATISFIES_ARGS.length + 1 }, (_, at) => SATISFIES_ARGS.toSpliced(at, 0, token)),
 );
 
+const ASCII_PUNCTUATION = [..."!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~"];
+
 const WORD_PREFIXES_AND_EXTENSIONS = OPERANDS.flatMap(({ words, slots }) => {
   const argv = [...words, ...validOperands(slots)];
   return words.flatMap((word, at) =>
-    [...Array.from({ length: word.length - 1 }, (_, end) => word.slice(0, end + 1)), `${word}x`].map((token) =>
-      argv.with(at, token),
-    ),
+    [
+      ...Array.from({ length: word.length - 1 }, (_, end) => word.slice(0, end + 1)),
+      ...["x", ...ASCII_PUNCTUATION].map((character) => word + character),
+    ].map((token) => argv.with(at, token)),
   );
 });
 
@@ -398,8 +401,17 @@ const PERTURBING_CHARACTERS = [
   ...Array.from({ length: 0x1f }, (_, code) => String.fromCharCode(code + 1)),
   "\x7F",
   " ",
-  ..."!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~",
+  ...ASCII_PUNCTUATION,
 ];
+
+const NON_ASCII_CHARACTERS = [
+  0x85, 0xa0, 0xad, 0x1680, 0x2000, 0x200a, 0x200b, 0x200c, 0x200d, 0x2028, 0x2029, 0x202f, 0x205f, 0x2060, 0x3000,
+  0xfeff, 0x80, 0x9f, 0xff0e, 0xff10,
+].map((code) => String.fromCharCode(code));
+
+const ESCAPE_FORMS = ["%20", "%3E", "%2E", "\\t", "\\n", "\\r", "\\\\", "\\x41", "\\u0041", "&gt;"];
+
+const GRAMMAR_ALPHABET = [..."019xX*.-+ \t|~^=<>"];
 
 const REJECTED_FORMS = [
   "1.5.x",
@@ -431,20 +443,52 @@ const FORMS = [
   ]),
 ];
 
-const perturbed = (operand) => [
-  ...PERTURBING_CHARACTERS.flatMap((character) => [
-    character + operand,
-    operand + character,
-    character + operand + character,
-  ]),
-  ...FORMS,
+const surrounded = (operand, additions) =>
+  additions.flatMap((addition) => [addition + operand, operand + addition, addition + operand + addition]);
+
+const neighbours = (operand) => [
+  ...Array.from({ length: operand.length + 1 }, (_, at) =>
+    GRAMMAR_ALPHABET.map((character) => operand.slice(0, at) + character + operand.slice(at)),
+  ).flat(),
+  ...[...operand].flatMap((_, at) =>
+    GRAMMAR_ALPHABET.map((character) => operand.slice(0, at) + character + operand.slice(at + 1)),
+  ),
+  ...[...operand].map((_, at) => operand.slice(0, at) + operand.slice(at + 1)),
 ];
 
+const perturbed = (operand) =>
+  [
+    ...new Set([
+      ...surrounded(operand, PERTURBING_CHARACTERS),
+      ...FORMS,
+      ...surrounded(operand, NON_ASCII_CHARACTERS),
+      ...neighbours(operand),
+      ...surrounded(operand, ESCAPE_FORMS),
+    ]),
+  ].filter((variant) => variant !== operand);
+
 const [VERSION, RANGE] = validOperands(SATISFIES.slots);
+
+const BOUNDED_RANGES = [
+  ["=1.2.3", ["1.2.2", "1.2.3", "1.2.4"]],
+  ["1.2.3", ["1.2.2", "1.2.3", "1.2.4"]],
+  [">1.2.3", ["1.2.2", "1.2.3", "1.2.4"]],
+  [">=1.2.3", ["1.2.2", "1.2.3", "1.2.4"]],
+  ["<1.2.3", ["1.2.2", "1.2.3", "1.2.4"]],
+  ["<=1.2.3", ["1.2.2", "1.2.3", "1.2.4"]],
+  ["^1.2.3", ["1.2.2", "1.2.3", "1.2.4", "1.9.9", "2.0.0", "2.0.1"]],
+  ["^0.2.3", ["0.2.2", "0.2.3", "0.2.4", "0.2.9", "0.3.0", "0.3.1"]],
+  ["^0.0.3", ["0.0.2", "0.0.3", "0.0.4"]],
+  ["~1.2.3", ["1.2.2", "1.2.3", "1.2.4", "1.2.9", "1.3.0", "1.3.1"]],
+  [">=1.2.3-beta.2", ["1.2.3-beta.1", "1.2.3-beta.2", "1.2.3-beta.3"]],
+  ["1.2.3+build.5", ["1.2.2", "1.2.3", "1.2.4"]],
+  [">=1.2.3 <2.0.0", ["1.2.2", "1.2.3", "1.2.4", "1.9.9", "2.0.0", "2.0.1"]],
+];
 
 const SATISFIES_VERBATIM = [
   ...perturbed(VERSION).map((version) => [version, RANGE]),
   ...perturbed(RANGE).map((range) => [VERSION, range]),
+  ...BOUNDED_RANGES.flatMap(([range, versions]) => versions.map((version) => [version, range])),
 ];
 
 function satisfiesOracle(version, range) {
@@ -455,13 +499,15 @@ function satisfiesOracle(version, range) {
   }
 }
 
-const LONG_OPERAND = "x".repeat(90_000);
+const LONG_OPERANDS = ["x".repeat(90_000), "\x01".repeat(130_000)];
 
 const LONG_ERROR_LINES = OPERANDS.flatMap(({ words, slots }) => {
   const valid = validOperands(slots);
-  return slots
-    .map(({ rejects }, slot) => [[...words, ...valid.with(slot, LONG_OPERAND)], rejects(LONG_OPERAND)])
-    .filter(([, { status }]) => status === 1);
+  return LONG_OPERANDS.flatMap((operand) =>
+    slots
+      .map(({ rejects }, slot) => [[...words, ...valid.with(slot, operand)], rejects(operand)])
+      .filter(([, { status }]) => status === 1),
+  );
 });
 
 const USAGE_ERROR = { status: 2, stdout: "", stderr: USAGE };
