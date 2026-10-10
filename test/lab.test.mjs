@@ -243,10 +243,6 @@ const FUNCTION_ERRORS = [
 
 const syntaxError = (message) => ({ status: 1, stdout: "", stderr: `lab: SyntaxError: ${message}\n` });
 
-// One row per command, one entry per operand slot: the operand that makes it succeed, near misses that any
-// trimming, case-folding, Unicode-normalizing, splitting or joining reader changes (U+212A is changed by NFC,
-// NFD, NFKC, NFKD and toLowerCase; U+017F by NFKC, NFKD and toUpperCase), and what lab prints for a token the
-// slot rejects, which can differ from slot to slot. Every case below is generated from these rows.
 const OPERANDS = [
   {
     words: ["duration", "parse"],
@@ -298,6 +294,7 @@ const OPERANDS = [
           "\uFF11.5.0",
           "1.5.0-\u212A",
           "1.5.0-\u017F",
+          "1.5.0+",
         ],
         rejects: (token) =>
           syntaxError(`satisfiesSemver: ${JSON.stringify(token)} is not a valid SemVer 2.0.0 version`),
@@ -316,6 +313,7 @@ const OPERANDS = [
           "\uFF1E=1.2.3 <2.0.0",
           ">=1.2.3-\u212A <2.0.0",
           ">=1.2.3-\u017F <2.0.0",
+          ">=1.2.3+ <2.0.0",
         ],
         rejects: (token) => syntaxError(`satisfiesSemver: ${JSON.stringify(token)} is not a valid range`),
       },
@@ -342,31 +340,29 @@ const OPTION_MISPLACED = [
   ...[...new Set(OPERANDS.map(({ words }) => words[0]))].flatMap((group) =>
     OPTION_TOKENS.map((token) => [group, token]),
   ),
+  ...OPERANDS.flatMap(({ words, slots }) =>
+    slots.slice(1).flatMap((_, given) =>
+      OPTION_TOKENS.map((token) => [...words, ...slots.slice(0, given).map(({ valid }) => valid), token]),
+    ),
+  ),
 ];
 
-// Near misses for lab semver satisfies outside its operand slots, where the tables above try none: each
-// command word replaced by an option-shaped token or by a variant that a trimming, case-folding or NFKC
-// reader turns back into the word; each pair of neighbouring arguments joined by a space, which a splitting
-// reader separates again; and, at every gap before, between and after the arguments, a blank token that a
-// reader which trims, filters or re-splits its arguments drops. Each is a usage error.
 const SATISFIES_ARGS = ["semver", "satisfies", "1.5.0", ">=1.2.3 <2.0.0"];
 const WORD_NEAR_MISSES = [
-  ["SEMVER", "\u017Femver", "semver "],
-  ["SATISFIES", "satisfie\u017F", " satisfies"],
+  ["SEMVER", "\u017Femver", " semver", "semver "],
+  ["SATISFIES", "satisfie\u017F", " satisfies", "satisfies "],
 ];
 const BLANK_TOKENS = ["", " "];
 
-const NEAR_MISS_OUTSIDE_SLOTS = [
-  ...WORD_NEAR_MISSES.flatMap((nearMisses, at) =>
-    [...OPTION_TOKENS, ...nearMisses].map((token) => SATISFIES_ARGS.with(at, token)),
-  ),
-  ...Array.from({ length: SATISFIES_ARGS.length - 1 }, (_, at) =>
-    SATISFIES_ARGS.toSpliced(at, 2, SATISFIES_ARGS.slice(at, at + 2).join(" ")),
-  ),
-  ...BLANK_TOKENS.flatMap((token) =>
-    Array.from({ length: SATISFIES_ARGS.length + 1 }, (_, at) => SATISFIES_ARGS.toSpliced(at, 0, token)),
-  ),
-];
+const COMMAND_WORD_REPLACED = WORD_NEAR_MISSES.flatMap((nearMisses, at) =>
+  [...OPTION_TOKENS, ...nearMisses].map((token) => SATISFIES_ARGS.with(at, token)),
+);
+const NEIGHBOURS_JOINED = Array.from({ length: SATISFIES_ARGS.length - 1 }, (_, at) =>
+  SATISFIES_ARGS.toSpliced(at, 2, SATISFIES_ARGS.slice(at, at + 2).join(" ")),
+);
+const BLANK_INSERTED = BLANK_TOKENS.flatMap((token) =>
+  Array.from({ length: SATISFIES_ARGS.length + 1 }, (_, at) => SATISFIES_ARGS.toSpliced(at, 0, token)),
+);
 
 test('package.json\'s "lab" bin runs ["duration", "parse", "1h30m"] through its shebang from another directory', () => {
   const { bin } = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
@@ -414,7 +410,7 @@ for (const args of OPTION_MISPLACED) {
   });
 }
 
-for (const args of NEAR_MISS_OUTSIDE_SLOTS) {
+for (const args of [...COMMAND_WORD_REPLACED, ...NEIGHBOURS_JOINED, ...BLANK_INSERTED]) {
   test(`${show(args)} is a usage error with the near miss in place`, () => {
     assert.deepEqual(lab(args), { status: 2, stdout: "", stderr: USAGE });
   });
