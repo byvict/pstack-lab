@@ -4,6 +4,7 @@ import { spawn, spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
+import { satisfiesSemver } from "../src/semver.mjs";
 
 const LAB = fileURLToPath(new URL("../bin/lab.mjs", import.meta.url));
 const DURATION = new URL("../src/duration.mjs", import.meta.url).href;
@@ -379,6 +380,81 @@ const BLANK_INSERTED = BLANK_TOKENS.flatMap((token) =>
   Array.from({ length: SATISFIES_ARGS.length + 1 }, (_, at) => SATISFIES_ARGS.toSpliced(at, 0, token)),
 );
 
+const WORD_PREFIXES_AND_EXTENSIONS = OPERANDS.flatMap(({ words, slots }) => {
+  const argv = [...words, ...validOperands(slots)];
+  return words.flatMap((word, at) =>
+    [...Array.from({ length: word.length - 1 }, (_, end) => word.slice(0, end + 1)), `${word}x`].map((token) =>
+      argv.with(at, token),
+    ),
+  );
+});
+
+const HELP_WITH_WORD = [...new Set(OPERANDS.flatMap(({ words }) => words))].flatMap((word) => [
+  ["help", word],
+  ["--help", word],
+]);
+
+const PERTURBING_CHARACTERS = [
+  ...Array.from({ length: 0x1f }, (_, code) => String.fromCharCode(code + 1)),
+  "\x7F",
+  " ",
+  ..."!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~",
+];
+
+const REJECTED_FORMS = [
+  "1.5.x",
+  "1.x",
+  "1.X",
+  "1.5.*",
+  "1.5",
+  "1",
+  "~1.5",
+  "^1.x",
+  ">=1.2.3 || <2.0.0",
+  "1.2.3 - 2.0.0",
+  ">= 1.2.3",
+  "~>1.2.3",
+  "v1.5.0",
+];
+
+const swapCaseAt = (text, at) =>
+  text.slice(0, at) +
+  (text[at] === text[at].toUpperCase() ? text[at].toLowerCase() : text[at].toUpperCase()) +
+  text.slice(at + 1);
+
+const FORMS = [
+  ...new Set([
+    ...REJECTED_FORMS,
+    ...REJECTED_FORMS.flatMap((form) =>
+      [...form].flatMap((character, at) => (/[A-Za-z]/.test(character) ? [swapCaseAt(form, at)] : [])),
+    ),
+  ]),
+];
+
+const perturbed = (operand) => [
+  ...PERTURBING_CHARACTERS.flatMap((character) => [
+    character + operand,
+    operand + character,
+    character + operand + character,
+  ]),
+  ...FORMS,
+];
+
+const [VERSION, RANGE] = validOperands(SATISFIES.slots);
+
+const SATISFIES_VERBATIM = [
+  ...perturbed(VERSION).map((version) => [version, RANGE]),
+  ...perturbed(RANGE).map((range) => [VERSION, range]),
+];
+
+function satisfiesOracle(version, range) {
+  try {
+    return { status: 0, stdout: `${satisfiesSemver(version, range)}\n`, stderr: "" };
+  } catch (error) {
+    return { status: 1, stdout: "", stderr: `lab: ${error.name}: ${error.message}\n` };
+  }
+}
+
 const LONG_OPERAND = "x".repeat(90_000);
 
 const LONG_ERROR_LINES = OPERANDS.flatMap(({ words, slots }) => {
@@ -461,6 +537,25 @@ for (const args of OPTION_MISPLACED) {
 for (const args of [...COMMAND_WORD_REPLACED, ...NEIGHBOURS_JOINED, ...BLANK_INSERTED]) {
   test(`${show(args)} is a usage error with the near miss in place`, () => {
     assert.deepEqual(lab(args), { status: 2, stdout: "", stderr: USAGE });
+  });
+}
+
+for (const args of WORD_PREFIXES_AND_EXTENSIONS) {
+  test(`${show(args)} is a usage error with the command word cut or extended`, () => {
+    assert.deepEqual(lab(args), USAGE_ERROR);
+  });
+}
+
+for (const args of HELP_WITH_WORD) {
+  test(`${show(args)} is a usage error, not a help request`, () => {
+    assert.deepEqual(lab(args), USAGE_ERROR);
+  });
+}
+
+for (const [version, range] of SATISFIES_VERBATIM) {
+  const args = ["semver", "satisfies", version, range];
+  test(`${show(args)} prints what satisfiesSemver gives for the same strings`, () => {
+    assert.deepEqual(lab(args), satisfiesOracle(version, range));
   });
 }
 
