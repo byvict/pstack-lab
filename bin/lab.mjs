@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { formatDuration, parseDuration } from "../src/duration.mjs";
-import { compareSemver } from "../src/semver.mjs";
+import { compareSemver, satisfiesSemver } from "../src/semver.mjs";
 
 const MILLISECONDS = /^(?:0|[1-9][0-9]*)$/;
 
@@ -11,6 +11,7 @@ const COMMANDS = [
   { words: ["duration", "parse"], params: [verbatim("<texto>")], fn: parseDuration },
   { words: ["duration", "format"], params: [milliseconds("<ms>")], fn: formatDuration },
   { words: ["semver", "compare"], params: [verbatim("<a>"), verbatim("<b>")], fn: compareSemver },
+  { words: ["semver", "satisfies"], params: [verbatim("<versão>"), verbatim("<faixa>")], fn: satisfiesSemver },
 ];
 
 const HELP = ["--help", "help"];

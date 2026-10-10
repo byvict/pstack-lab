@@ -89,6 +89,9 @@ const SUCCESSES = [
   [["semver", "satisfies", "2.0.0", "^1.0.0"], "false\n"],
   [["semver", "satisfies", "1.5.0", ">=1.2.3 <2.0.0"], "true\n"],
   [["semver", "satisfies", "2.0.0", ">=1.2.3 <2.0.0"], "false\n"],
+  [["semver", "satisfies", "1.0.0", ">=1.2.3 <2.0.0"], "false\n"],
+  [["semver", "satisfies", "1.0.0-B", ">=1.0.0-a"], "false\n"],
+  [["semver", "satisfies", "1.0.0-a", ">=1.0.0-B"], "true\n"],
 ];
 
 const HELP_REQUESTS = [["--help"], ["help"]];
@@ -153,6 +156,7 @@ const USAGE_ERRORS = [
   ["semver", "satisfies"],
   ["semver", "satisfies", "1.2.3"],
   ["semver", "satisfies", "1.5.0", ">=1.2.3", "<2.0.0"],
+  ["semver", "satisfies", "1.5.0", ">=1.2.3", "<2.0.0", "^1.4.0"],
   ...MALFORMED_MS.map((ms) => ["duration", "format", ms]),
 ];
 
@@ -219,60 +223,148 @@ const FUNCTION_ERRORS = [
     ["semver", "satisfies", "1.0.0", "^1.0"],
     'lab: SyntaxError: satisfiesSemver: "^1.0" is not a valid range\n',
   ],
+  [
+    ["semver", "satisfies", "1.0", "^1.0"],
+    'lab: SyntaxError: satisfiesSemver: "1.0" is not a valid SemVer 2.0.0 version\n',
+  ],
+  [
+    ["semver", "satisfies", "1.5.0", ">=1.2.3 <2.0"],
+    'lab: SyntaxError: satisfiesSemver: ">=1.2.3 <2.0" is not a valid range\n',
+  ],
+  [
+    ["semver", "satisfies", "^1.2.3", "1.5.0"],
+    'lab: SyntaxError: satisfiesSemver: "^1.2.3" is not a valid SemVer 2.0.0 version\n',
+  ],
+  [
+    ["semver", "satisfies", "1.5.0 >=1.2.3", "<2.0.0"],
+    'lab: SyntaxError: satisfiesSemver: "1.5.0 >=1.2.3" is not a valid SemVer 2.0.0 version\n',
+  ],
 ];
 
-// One row per command: the operands that make it succeed, and for each operand slot near misses
-// that any trimming, case-folding or Unicode-normalizing reader changes (U+212A is changed by NFC,
-// NFD, NFKC, NFKD and toLowerCase). Every case below is generated from these rows.
+const syntaxError = (message) => ({ status: 1, stdout: "", stderr: `lab: SyntaxError: ${message}\n` });
+
+// One row per command, one entry per operand slot: the operand that makes it succeed, near misses that any
+// trimming, case-folding, Unicode-normalizing, splitting or joining reader changes (U+212A is changed by NFC,
+// NFD, NFKC, NFKD and toLowerCase; U+017F by NFKC, NFKD and toUpperCase), and what lab prints for a token the
+// slot rejects, which can differ from slot to slot. Every case below is generated from these rows.
 const OPERANDS = [
   {
     words: ["duration", "parse"],
-    valid: ["1h"],
-    nearMisses: [[" 1h", "\t1h", "\u00A01h", "1h ", "1H", "\uFF11h", "1h\u212A"]],
-    rejects: (token) => ({
-      status: 1,
-      stdout: "",
-      stderr: `lab: SyntaxError: parseDuration: invalid duration ${JSON.stringify(token)}\n`,
-    }),
+    slots: [
+      {
+        valid: "1h",
+        nearMisses: [" 1h", "\t1h", "\u00A01h", "1h ", "1H", "\uFF11h", "1h\u212A"],
+        rejects: (token) => syntaxError(`parseDuration: invalid duration ${JSON.stringify(token)}`),
+      },
+    ],
   },
   {
     words: ["duration", "format"],
-    valid: ["5"],
-    nearMisses: [[" 5", "\t5", "\u00A05", "5 ", "\uFF15"]],
-    rejects: () => ({ status: 2, stdout: "", stderr: USAGE }),
+    slots: [
+      {
+        valid: "5",
+        nearMisses: [" 5", "\t5", "\u00A05", "5 ", "\uFF15"],
+        rejects: () => ({ status: 2, stdout: "", stderr: USAGE }),
+      },
+    ],
   },
   {
     words: ["semver", "compare"],
-    valid: ["1.0.0", "2.0.0"],
-    nearMisses: [
-      [" 1.0.0", "\t1.0.0", "\u00A01.0.0", "1.0.0 ", "\uFF11.0.0", "1.0.0-\u212A"],
-      [" 2.0.0", "\t2.0.0", "\u00A02.0.0", "2.0.0 ", "\uFF12.0.0", "2.0.0-\u212A"],
+    slots: [
+      {
+        valid: "1.0.0",
+        nearMisses: [" 1.0.0", "\t1.0.0", "\u00A01.0.0", "1.0.0 ", "\uFF11.0.0", "1.0.0-\u212A"],
+        rejects: (token) => syntaxError(`compareSemver: ${JSON.stringify(token)} is not a valid SemVer 2.0.0 version`),
+      },
+      {
+        valid: "2.0.0",
+        nearMisses: [" 2.0.0", "\t2.0.0", "\u00A02.0.0", "2.0.0 ", "\uFF12.0.0", "2.0.0-\u212A"],
+        rejects: (token) => syntaxError(`compareSemver: ${JSON.stringify(token)} is not a valid SemVer 2.0.0 version`),
+      },
     ],
-    rejects: (token) => ({
-      status: 1,
-      stdout: "",
-      stderr: `lab: SyntaxError: compareSemver: ${JSON.stringify(token)} is not a valid SemVer 2.0.0 version\n`,
-    }),
+  },
+  {
+    words: ["semver", "satisfies"],
+    slots: [
+      {
+        valid: "1.5.0",
+        nearMisses: [
+          " 1.5.0",
+          "\t1.5.0",
+          "\u00A01.5.0",
+          "1.5.0 ",
+          "1.5.0\n",
+          "",
+          "\uFF11.5.0",
+          "1.5.0-\u212A",
+          "1.5.0-\u017F",
+        ],
+        rejects: (token) =>
+          syntaxError(`satisfiesSemver: ${JSON.stringify(token)} is not a valid SemVer 2.0.0 version`),
+      },
+      {
+        valid: ">=1.2.3 <2.0.0",
+        nearMisses: [
+          " >=1.2.3 <2.0.0",
+          ">=1.2.3 <2.0.0 ",
+          ">=1.2.3 <2.0.0\n",
+          "",
+          ">=1.2.3  <2.0.0",
+          ">=1.2.3\t<2.0.0",
+          ">=1.2.3\u00A0<2.0.0",
+          '">=1.2.3 <2.0.0"',
+          "\uFF1E=1.2.3 <2.0.0",
+          ">=1.2.3-\u212A <2.0.0",
+          ">=1.2.3-\u017F <2.0.0",
+        ],
+        rejects: (token) => syntaxError(`satisfiesSemver: ${JSON.stringify(token)} is not a valid range`),
+      },
+    ],
   },
 ];
 
 const OPTION_TOKENS = ["--", "--x", "-h", "--help", "help"];
 
-const OPERAND_IN_SLOT = OPERANDS.flatMap(({ words, valid, nearMisses, rejects }) =>
-  valid.flatMap((_, slot) =>
-    [...OPTION_TOKENS, ...nearMisses[slot]].map((token) => [[...words, ...valid.with(slot, token)], rejects(token)]),
-  ),
-);
+const OPERAND_IN_SLOT = OPERANDS.flatMap(({ words, slots }) => {
+  const valid = slots.map(({ valid }) => valid);
+  return slots.flatMap(({ nearMisses, rejects }, slot) =>
+    [...OPTION_TOKENS, ...nearMisses].map((token) => [[...words, ...valid.with(slot, token)], rejects(token)]),
+  );
+});
 
 const OPTION_MISPLACED = [
-  ...OPERANDS.flatMap(({ words, valid }) => {
-    const argv = [...words, ...valid];
+  ...OPERANDS.flatMap(({ words, slots }) => {
+    const argv = [...words, ...slots.map(({ valid }) => valid)];
     return OPTION_TOKENS.flatMap((token) =>
       Array.from({ length: argv.length + 1 }, (_, at) => argv.toSpliced(at, 0, token)),
     );
   }),
   ...[...new Set(OPERANDS.map(({ words }) => words[0]))].flatMap((group) =>
     OPTION_TOKENS.map((token) => [group, token]),
+  ),
+];
+
+// Near misses for lab semver satisfies outside its operand slots, where the tables above try none: each
+// command word replaced by an option-shaped token or by a variant that a trimming, case-folding or NFKC
+// reader turns back into the word; each pair of neighbouring arguments joined by a space, which a splitting
+// reader separates again; and, at every gap before, between and after the arguments, a blank token that a
+// reader which trims, filters or re-splits its arguments drops. Each is a usage error.
+const SATISFIES_ARGS = ["semver", "satisfies", "1.5.0", ">=1.2.3 <2.0.0"];
+const WORD_NEAR_MISSES = [
+  ["SEMVER", "\u017Femver", "semver "],
+  ["SATISFIES", "satisfie\u017F", " satisfies"],
+];
+const BLANK_TOKENS = ["", " "];
+
+const NEAR_MISS_OUTSIDE_SLOTS = [
+  ...WORD_NEAR_MISSES.flatMap((nearMisses, at) =>
+    [...OPTION_TOKENS, ...nearMisses].map((token) => SATISFIES_ARGS.with(at, token)),
+  ),
+  ...Array.from({ length: SATISFIES_ARGS.length - 1 }, (_, at) =>
+    SATISFIES_ARGS.toSpliced(at, 2, SATISFIES_ARGS.slice(at, at + 2).join(" ")),
+  ),
+  ...BLANK_TOKENS.flatMap((token) =>
+    Array.from({ length: SATISFIES_ARGS.length + 1 }, (_, at) => SATISFIES_ARGS.toSpliced(at, 0, token)),
   ),
 ];
 
@@ -318,6 +410,12 @@ for (const [args, expected] of OPERAND_IN_SLOT) {
 
 for (const args of OPTION_MISPLACED) {
   test(`${show(args)} is a usage error with the option-shaped token in place`, () => {
+    assert.deepEqual(lab(args), { status: 2, stdout: "", stderr: USAGE });
+  });
+}
+
+for (const args of NEAR_MISS_OUTSIDE_SLOTS) {
+  test(`${show(args)} is a usage error with the near miss in place`, () => {
     assert.deepEqual(lab(args), { status: 2, stdout: "", stderr: USAGE });
   });
 }
