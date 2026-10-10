@@ -321,6 +321,11 @@ const OPERANDS = [
           ">=v1.2.3 <2.0.0",
           "*",
           "x",
+          ">=2.0.0 || <1.6.0",
+          "1.x || 2.x",
+          "1.2.3 - 2.0.0",
+          ">= 1.2.3",
+          "~>1.2.3",
         ],
         rejects: (token) => syntaxError(`satisfiesSemver: ${JSON.stringify(token)} is not a valid range`),
       },
@@ -374,6 +379,39 @@ const BLANK_INSERTED = BLANK_TOKENS.flatMap((token) =>
   Array.from({ length: SATISFIES_ARGS.length + 1 }, (_, at) => SATISFIES_ARGS.toSpliced(at, 0, token)),
 );
 
+const LONG_OPERAND = "x".repeat(90_000);
+
+const LONG_ERROR_LINES = OPERANDS.flatMap(({ words, slots }) => {
+  const valid = validOperands(slots);
+  return slots
+    .map(({ rejects }, slot) => [[...words, ...valid.with(slot, LONG_OPERAND)], rejects(LONG_OPERAND)])
+    .filter(([, { status }]) => status === 1);
+});
+
+const USAGE_ERROR = { status: 2, stdout: "", stderr: USAGE };
+
+const READER_GONE = [
+  [["duration", "parse", "90m"], { status: 0, stdout: "5400000\n", stderr: "" }],
+  [["duration", "parse"], USAGE_ERROR],
+  [["duration", "parse", "-1s"], syntaxError('parseDuration: invalid duration "-1s"')],
+  [["duration", "format", "5400000"], { status: 0, stdout: "1h30m\n", stderr: "" }],
+  [["duration", "format"], USAGE_ERROR],
+  [
+    ["duration", "format", "9007199254740992"],
+    {
+      status: 1,
+      stdout: "",
+      stderr: "lab: RangeError: formatDuration: 9007199254740992 is not an integer from 0 to Number.MAX_SAFE_INTEGER\n",
+    },
+  ],
+  [["semver", "compare", "1.0.0", "2.0.0"], { status: 0, stdout: "-1\n", stderr: "" }],
+  [["semver", "compare", "1.0.0"], USAGE_ERROR],
+  [["semver", "compare", "1.0", "2.0.0"], syntaxError('compareSemver: "1.0" is not a valid SemVer 2.0.0 version')],
+  [["semver", "satisfies", "1.5.0", ">=1.2.3 <2.0.0"], { status: 0, stdout: "true\n", stderr: "" }],
+  [["semver", "satisfies", "1.5.0"], USAGE_ERROR],
+  [["semver", "satisfies", "1.0", "^1.0.0"], syntaxError('satisfiesSemver: "1.0" is not a valid SemVer 2.0.0 version')],
+];
+
 test('package.json\'s "lab" bin runs ["duration", "parse", "1h30m"] through its shebang from another directory', () => {
   const { bin } = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
   const executable = fileURLToPath(new URL(`../${bin.lab}`, import.meta.url));
@@ -423,6 +461,19 @@ for (const args of OPTION_MISPLACED) {
 for (const args of [...COMMAND_WORD_REPLACED, ...NEIGHBOURS_JOINED, ...BLANK_INSERTED]) {
   test(`${show(args)} is a usage error with the near miss in place`, () => {
     assert.deepEqual(lab(args), { status: 2, stdout: "", stderr: USAGE });
+  });
+}
+
+for (const [args, expected] of LONG_ERROR_LINES) {
+  test(`${show(args)} writes its whole ${expected.stderr.length}-character error line`, () => {
+    assert.deepEqual(lab(args), expected);
+  });
+}
+
+for (const [args, { status, stdout, stderr }] of READER_GONE) {
+  test(`${show(args)} exits ${status} when either reader is gone`, async () => {
+    assert.deepEqual(await labWithClosedReader(args, "stderr"), { status, stdout });
+    assert.deepEqual(await labWithClosedReader(args, "stdout"), { status, stderr });
   });
 }
 
