@@ -12,6 +12,7 @@ const USAGE =
   "usage: lab duration parse <texto>\n" +
   "       lab duration format <ms>\n" +
   "       lab semver compare <a> <b>\n" +
+  "       lab semver satisfies <versão> <faixa>\n" +
   "       lab --help\n" +
   "       lab help\n";
 
@@ -84,6 +85,10 @@ const SUCCESSES = [
   [["semver", "compare", "1.0.0+build.1", "1.0.0+build.2"], "0\n"],
   [["semver", "compare", "1.0.0-B", "1.0.0-a"], "-1\n"],
   [["semver", "compare", "1.0.0-a", "1.0.0-B"], "1\n"],
+  [["semver", "satisfies", "1.2.3", "^1.0.0"], "true\n"],
+  [["semver", "satisfies", "2.0.0", "^1.0.0"], "false\n"],
+  [["semver", "satisfies", "1.5.0", ">=1.2.3 <2.0.0"], "true\n"],
+  [["semver", "satisfies", "2.0.0", ">=1.2.3 <2.0.0"], "false\n"],
 ];
 
 const HELP_REQUESTS = [["--help"], ["help"]];
@@ -145,6 +150,9 @@ const USAGE_ERRORS = [
   ["semver", "compare"],
   ["semver", "compare", "1.0.0"],
   ["semver", "compare", "1.0.0", "2.0.0", "3.0.0"],
+  ["semver", "satisfies"],
+  ["semver", "satisfies", "1.2.3"],
+  ["semver", "satisfies", "1.5.0", ">=1.2.3", "<2.0.0"],
   ...MALFORMED_MS.map((ms) => ["duration", "format", ms]),
 ];
 
@@ -202,6 +210,14 @@ const FUNCTION_ERRORS = [
   [
     ["semver", "compare", "1.0.0\n", "1.0.0"],
     'lab: SyntaxError: compareSemver: "1.0.0\\n" is not a valid SemVer 2.0.0 version\n',
+  ],
+  [
+    ["semver", "satisfies", "1.0", "^1.0.0"],
+    'lab: SyntaxError: satisfiesSemver: "1.0" is not a valid SemVer 2.0.0 version\n',
+  ],
+  [
+    ["semver", "satisfies", "1.0.0", "^1.0"],
+    'lab: SyntaxError: satisfiesSemver: "^1.0" is not a valid range\n',
   ],
 ];
 
